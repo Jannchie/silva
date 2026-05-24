@@ -53,13 +53,9 @@
 - 用 SigLIP2 processor 预处理到 384。
 - 返回 `{"pixel_values": Tensor, "score": float}`。
 
-### 3.3 小数分数处理（**待确认**）
+### 3.3 分数取值（已确认）
 
-假设分数主要是整数 1~5。若存在小数（如 3.5）：
-- **序数目标**用 `round(score)` 取整后生成阈值标签。
-- **回归 SmoothL1** 用原始小数值。
-
-这样小数信息不丢，又能用序数结构。若你确认全是整数，则两者一致。
+本人打分为**纯整数 1/2/3/4/5**。序数阈值目标与 SmoothL1 回归都直接用该整数值，无需取整处理。
 
 ---
 
@@ -83,7 +79,7 @@ image
 
 ### 4.2 `siglip_aesthetic.py` — `SigLIP2AestheticModel`
 
-- 加载 `Siglip2VisionModel`（bf16，sdpa attention）。
+- 用 `AutoModel.from_pretrained`（bf16，sdpa）加载后取 `.vision_model`，丢弃文本塔省显存。注意：该 fixed-res "siglip2" checkpoint 在 transformers 5.x 下按 **SigLIP-v1 视觉塔**（`SiglipVisionModel`，Conv2d patch embed、384、hidden 1152）加载——直接用 `Siglip2VisionModel`（NaFlex）会因 shape 不匹配重置 patch/position embedding，必须避免。
 - **v1：backbone 冻结**（`requires_grad=False`），只训 head。
 - `forward(pixel_values)` 返回 `{"logits", "score"}`。
 - 预留 `aux_heads`（外部打分器回归头）参数，v1 默认不构建。

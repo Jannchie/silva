@@ -1,0 +1,25 @@
+# SILVA v1 — Stage 1: freeze SigLIP2 backbone, train only the ordinal head.
+model:
+  model_id: google/siglip2-so400m-patch14-384
+  dropout: 0.1
+
+data:
+  manifest_path: data/manifest.parquet
+  image_size: 384
+  num_workers: 4
+
+train:
+  freeze_backbone: true
+  batch_size: 16
+  grad_accum: 2
+  epochs: 8
+  lr_head: 3.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  smooth_l1_weight: 0.2
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 3
+  seed: 42
+  output_dir: outputs/v1_stage1_head
