@@ -71,7 +71,8 @@ image
   → pooled feature
   → LayerNorm + Dropout(0.1)
   → 个人 ordinal head
-推理：pred_score = 1 + Σ sigmoid(logit_k)   ∈ [1, 5]
+内部 ordinal 值：ordinal_score = 1 + Σ sigmoid(logit_k) ∈ [1, 5]   （标签/指标空间）
+规范输出：       score = (Σ sigmoid(logit_k)) / 4 ∈ [0, 1]          （见 §4.3）
 ```
 
 ### 4.1 `ordinal_head.py` — `OrdinalHead`
@@ -86,6 +87,14 @@ image
 - **v1：backbone 冻结**（`requires_grad=False`），只训 head。
 - `forward(pixel_values)` 返回 `{"logits", "score"}`。
 - 预留 `aux_heads`（外部打分器回归头）参数，v1 默认不构建。
+
+### 4.3 输出规范（`[0,1]`，从 0 起算）
+
+- **规范输出 `score ∈ [0,1]`**：序数模型里它 = 4 个阈值概率的均值 `Σsigmoid/4` = "清过了多少比例的质量门槛"。`0` = 连最低门槛都没过，`1` = 全过。这个量**天然 0-based**；`[1,5]` 里的下限"1"只是标签显示约定，不是模型的自然底。
+- 预测值通常是小数（如 `0.73`），属正常。sigmoid 取不到精确 0/1，实际落在开区间 `(0,1)`。
+- 缩放到任意刻度是一行 helper：`to_scale(score, lo, hi) = lo + (hi - lo) * score`（`to_scale(s,1,5)`、`to_scale(s,1,10)`）。消费方按自己习惯的刻度取用。
+- 该 0~1 是按**你的口味**校准的归一分，**不是**通用客观美学。
+- 训练目标 / ordinal head / 标签 / 指标仍在 `1~5` 标签空间（见 §5、§7）；`[0,1]` 只是输出层换算，不改动训练。
 
 ---
 
@@ -114,6 +123,8 @@ L = ordinal_BCE(logits, ordinal_targets) + 0.2 * SmoothL1(pred_score, personal_s
 ## 7. 评估（`silva/metrics.py` + `silva/evaluate.py`）
 
 只看你的验证集。指标：**MAE、RMSE、Pearson、Spearman、QWK、Top-5% precision**。
+- MAE / RMSE 在 `1~5` 标签空间计算（"差几颗星"最可读）；需要时可换算到 `[0,1]`（×0.25）。
+- Spearman / Pearson / QWK / Top-K **尺度无关**，`[0,1]` 还是 `[1,5]` 结果一致；这也是筛图最该看的指标。
 `evaluate.py` 可对指定 checkpoint 在 val/test 上单独出报告。
 
 ---
