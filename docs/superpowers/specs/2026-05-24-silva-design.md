@@ -180,5 +180,6 @@ silva/
 - LoRA / 解冻末 N 层（Stage2）、全量微调（Stage3）。
 - 5-bin 分布 head、ranking loss。
 - Web 部署 / 推理服务、数据清洗/标注工具。
+- **NaFlex 变体对照**：v1 用 fixed-res 384（squish，与 SigLIP 预训练同分布，但插画长宽比会形变、细节受限于 384）。`siglip2-so400m-patch16-naflex` 原生支持长宽比 + 可变分辨率，是长宽比敏感场景的"正确"架构，但需换 model 类 / processor（带 `spatial_shapes`、`attention_mask`）/ 变长 collate。**决定：先出 fixed-res baseline 的 Spearman，再用验证集决定是否值得切 NaFlex，不预判。**
 
 扩展位在代码中以参数/桩形式预留（`aux_heads`、多任务 loss 接口、导出的 `scorer_a/b` 列），但本版不实现逻辑。
