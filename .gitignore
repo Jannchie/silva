@@ -12,9 +12,9 @@ wheels/
 # Env / secrets
 .env
 
-# Data & training artifacts
-data/
-outputs/
+# Data & training artifacts (anchored to repo root so silva/data/ stays tracked)
+/data/
+/outputs/
 *.parquet
 *.ckpt
 *.pt
