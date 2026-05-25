@@ -2,6 +2,7 @@ import math
 
 from silva.metrics import (
     compute_metrics,
+    is_improvement,
     mae,
     pearson,
     quadratic_weighted_kappa,
@@ -57,3 +58,19 @@ def test_compute_metrics_keys():
     m = compute_metrics([1, 2, 3, 4], [1, 2, 3, 4])
     assert {"mae", "rmse", "pearson", "spearman", "qwk", "top_1pct", "top_5pct"} <= set(m)
     assert m["spearman"] == 1.0
+
+
+def test_is_improvement_better():
+    assert is_improvement(0.5, 0.4) is True
+
+
+def test_is_improvement_worse():
+    assert is_improvement(0.4, 0.5) is False
+
+
+def test_is_improvement_equal_is_not_improvement():
+    assert is_improvement(0.5, 0.5) is False
+
+
+def test_is_improvement_nan_is_never_improvement():
+    assert is_improvement(float("nan"), -math.inf) is False

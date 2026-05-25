@@ -17,7 +17,6 @@ class ModelConfig(BaseModel):
 
 class DataConfig(BaseModel):
     manifest_path: str = "data/manifest.parquet"
-    image_size: int = 384
     num_workers: int = 4
 
 

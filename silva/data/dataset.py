@@ -6,7 +6,6 @@ import logging
 from typing import TYPE_CHECKING
 
 import pandas as pd
-import torch
 from PIL import Image, UnidentifiedImageError
 from torch.utils.data import Dataset
 
@@ -14,6 +13,8 @@ from silva.data.manifest import validate_manifest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    import torch
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +40,15 @@ class AestheticDataset(Dataset):
         return len(self.rows)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor | int]:
-        row = self.rows.iloc[idx]
-        try:
-            image = Image.open(row["image_path"]).convert("RGB")
-        except (OSError, UnidentifiedImageError):
-            logger.warning("Skipping unreadable image: %s", row["image_path"])
-            return self.__getitem__((idx + 1) % len(self))
-        pixel_values = self.processor(images=image, return_tensors="pt")["pixel_values"][0]
-        return {"pixel_values": pixel_values, "score": int(row["personal_score"])}
+        n = len(self)
+        for offset in range(n):
+            row = self.rows.iloc[(idx + offset) % n]
+            try:
+                image = Image.open(row["image_path"]).convert("RGB")
+            except (OSError, UnidentifiedImageError):
+                logger.warning("Skipping unreadable image: %s", row["image_path"])
+                continue
+            pixel_values = self.processor(images=image, return_tensors="pt")["pixel_values"][0]
+            return {"pixel_values": pixel_values, "score": int(row["personal_score"])}
+        msg = f"no readable image found in this split (checked {n} rows)"
+        raise RuntimeError(msg)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from scipy import stats
 
@@ -66,6 +68,15 @@ def top_k_precision(preds: ArrayLike, targets: ArrayLike, frac: float) -> float:
     top_pred = set(np.argsort(p)[-k:].tolist())
     top_true = set(np.argsort(t)[-k:].tolist())
     return len(top_pred & top_true) / k
+
+
+def is_improvement(current: float, best: float) -> bool:
+    """True if ``current`` is a valid (non-NaN) metric strictly better than ``best``.
+
+    Guards early-stopping against degenerate evals (e.g. constant predictions make
+    Spearman NaN), which must not count as an improvement.
+    """
+    return not math.isnan(current) and current > best
 
 
 def compute_metrics(

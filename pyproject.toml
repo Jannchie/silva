@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "silva"
 version = "0.1.0"
@@ -76,6 +80,9 @@ fixable = ["F401"]
 "__init__.py" = ["E402", "F401"]
 "tests/*" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415"]
 "scripts/*" = ["PLC0415", "EM101"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["silva"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

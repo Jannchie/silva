@@ -40,7 +40,7 @@ def test_training_closed_loop(tmp_path):
     out_dir = tmp_path / "out"
     cfg = {
         "model": {"model_id": "google/siglip2-so400m-patch14-384", "dropout": 0.1},
-        "data": {"manifest_path": str(manifest), "image_size": 384, "num_workers": 0},
+        "data": {"manifest_path": str(manifest), "num_workers": 0},
         "train": {
             "freeze_backbone": True,
             "batch_size": 2,

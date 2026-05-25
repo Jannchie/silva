@@ -66,11 +66,13 @@ def validate_manifest(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"manifest missing required column(s): {missing}")
 
     if df["image_path"].isna().any():
-        raise ValueError("manifest has null image_path values")
+        msg = "manifest has null image_path values"
+        raise ValueError(msg)
 
     scores = df["personal_score"].to_numpy()
     if not np.all(np.isfinite(scores)) or not np.all(np.mod(scores, 1) == 0):
-        raise ValueError("personal_score must be integer-valued")
+        msg = "personal_score must be integer-valued"
+        raise ValueError(msg)
     if scores.min() < MIN_SCORE or scores.max() > MAX_SCORE:
         raise ValueError(f"personal_score must be within [{MIN_SCORE}, {MAX_SCORE}]")
 

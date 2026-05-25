@@ -17,7 +17,7 @@ from transformers import AutoImageProcessor, get_cosine_schedule_with_warmup
 from silva.config import Config
 from silva.data.dataset import AestheticDataset
 from silva.losses import silva_loss
-from silva.metrics import compute_metrics
+from silva.metrics import compute_metrics, is_improvement
 from silva.models.siglip_aesthetic import SigLIP2AestheticModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -94,7 +94,7 @@ def train(config_path: str) -> dict[str, float]:
         accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
 
         current = metrics[cfg.train.early_stop_metric]
-        if current > best_metric:
+        if is_improvement(current, best_metric):
             best_metric = current
             best_metrics = metrics
             patience = 0

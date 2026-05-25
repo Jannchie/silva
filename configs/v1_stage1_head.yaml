@@ -5,7 +5,6 @@ model:
 
 data:
   manifest_path: data/manifest.parquet
-  image_size: 384
   num_workers: 4
 
 train:
