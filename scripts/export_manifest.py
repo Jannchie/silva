@@ -1,7 +1,13 @@
-"""CLI: export the training manifest (parquet) from Postgres.
+"""Example manifest producer: Postgres -> parquet.
 
-DB credentials come from .env (DATABASE_URL). Table / column names are passed as
-flags — this is the only place the DB schema is referenced.
+This is ONE example data source. The training pipeline depends only on the manifest
+contract (`silva.data.manifest`), so you can produce the parquet from anything —
+a CSV, a scrape, or a merge of several sources — as long as `validate_manifest`
+passes. See README for the schema.
+
+Requires the optional 'postgres' extra:
+
+    uv sync --extra postgres
 """
 
 from __future__ import annotations
@@ -11,12 +17,12 @@ import os
 
 from dotenv import load_dotenv
 
-from silva.data.export_manifest import export_manifest
+from silva.data.manifest import assign_splits, write_manifest
 
 
 def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Export SILVA training manifest from Postgres")
+    parser = argparse.ArgumentParser(description="Example: export a SILVA manifest from Postgres")
     parser.add_argument("--table", required=True, help="source table name")
     parser.add_argument("--image-col", required=True, help="column with local image path")
     parser.add_argument("--score-col", required=True, help="column with your 1~5 score")
@@ -26,18 +32,26 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    database_url = os.environ["DATABASE_URL"]
-    df = export_manifest(
-        database_url=database_url,
-        table=args.table,
-        image_path_col=args.image_col,
-        personal_score_col=args.score_col,
-        scorer_a_col=args.scorer_a_col,
-        scorer_b_col=args.scorer_b_col,
-        output_path=args.output,
-        seed=args.seed,
-    )
-    print(f"Wrote {len(df)} rows to {args.output}")
+    try:
+        import pandas as pd
+        from sqlalchemy import create_engine
+    except ImportError as exc:
+        raise SystemExit("Postgres export needs the optional extra: uv sync --extra postgres") from exc
+
+    select = [f"{args.image_col} AS image_path", f"{args.score_col} AS personal_score"]
+    if args.scorer_a_col:
+        select.append(f"{args.scorer_a_col} AS scorer_a")
+    if args.scorer_b_col:
+        select.append(f"{args.scorer_b_col} AS scorer_b")
+    query = f"SELECT {', '.join(select)} FROM {args.table} WHERE {args.score_col} IS NOT NULL"  # noqa: S608
+
+    df = pd.read_sql(query, create_engine(os.environ["DATABASE_URL"]))
+    df = df.dropna(subset=["image_path", "personal_score"])
+    df["personal_score"] = df["personal_score"].astype("int64")
+    df["split"] = assign_splits(df["image_path"].tolist(), seed=args.seed)
+
+    out = write_manifest(df, args.output)
+    print(f"Wrote {len(df)} rows to {out}")
     print(df["split"].value_counts().to_string())
 
 

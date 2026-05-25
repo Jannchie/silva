@@ -1371,18 +1371,22 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pillow" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "scipy" },
-    { name = "sqlalchemy" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers" },
+]
+
+[package.optional-dependencies]
+postgres = [
+    { name = "psycopg", extra = ["binary"] },
+    { name = "sqlalchemy" },
 ]
 
 [package.dev-dependencies]
@@ -1397,19 +1401,20 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pillow", specifier = ">=10.4" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "scipy", specifier = ">=1.13" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "sqlalchemy", marker = "extra == 'postgres'", specifier = ">=2.0" },
     { name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cu132" },
     { name = "torchvision", specifier = ">=0.19", index = "https://download.pytorch.org/whl/cu132" },
     { name = "tqdm", specifier = ">=4.66" },
     { name = "transformers", specifier = ">=5.0" },
 ]
+provides-extras = ["postgres"]
 
 [package.metadata.requires-dev]
 dev = [

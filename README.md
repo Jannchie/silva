@@ -16,27 +16,41 @@ Design spec: [`docs/superpowers/specs/2026-05-24-silva-design.md`](docs/superpow
 
 ```bash
 uv sync
-cp .env.example .env   # set DATABASE_URL
 ```
 
-For GPU training install a CUDA build of torch, e.g.:
+`torch` is pinned to a CUDA build (cu132) in `pyproject.toml`, so `uv sync` is
+GPU-ready out of the box (NVIDIA driver must support CUDA ≥ 13.2). The Postgres
+example producer needs an optional extra:
 
 ```bash
-uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+uv sync --extra postgres
+cp .env.example .env   # set DATABASE_URL
 ```
 
 ## Workflow
 
-1. **Export manifest** from Postgres (only step that touches the DB schema):
+1. **Produce a manifest** — a parquet matching the contract in `silva.data.manifest`.
+   The training pipeline depends only on this shape; the data source is up to you.
+
+   | column | type | required | notes |
+   |---|---|---|---|
+   | `image_path` | str | yes | local image path |
+   | `personal_score` | int 1..5 | yes | your rating |
+   | `split` | `train`/`val`/`test` | yes | use `assign_splits` for leakage-free splits |
+   | `scorer_a`, `scorer_b` | float | no | external scorers, stored for v2 |
+
+   Add splits with `assign_splits`, then validate + write with `write_manifest`.
+   A Postgres source is provided as one example (optional extra):
 
    ```bash
+   uv sync --extra postgres
    uv run python scripts/export_manifest.py \
        --table my_table --image-col image_path --score-col my_score \
        --output data/manifest.parquet
    ```
 
-   Produces `data/manifest.parquet` with columns
-   `image_path, personal_score, split` (+ `scorer_a/b` if provided, stored for v2).
+   Any other source works the same way — emit a parquet with the columns above;
+   `validate_manifest` (also run on dataset load) enforces the contract.
 
 2. **Train** (Stage 1: frozen backbone + ordinal head):
 

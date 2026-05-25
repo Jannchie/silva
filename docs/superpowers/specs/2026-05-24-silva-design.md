@@ -31,19 +31,22 @@
 
 ## 3. 数据管线
 
-### 3.1 manifest 导出（`scripts/export_manifest.py` → `silva/data/export_manifest.py`）
+### 3.1 manifest 契约（`silva/data/manifest.py`）
 
-唯一接触数据库 schema 的地方。连 Postgres，导出 parquet：
+**训练只依赖 manifest 的形状，不关心来源。** 任何数据源（DB / CSV / 爬虫 / 多源合并）只要产出符合下表的 parquet 即可：
 
-| 列 | 类型 | 说明 |
-|---|---|---|
-| `image_path` | str | 本地绝对/相对图片路径 |
-| `personal_score` | float | 你的 1~5 打分（见 §3.3 小数处理） |
-| `split` | str | `train` / `val` / `test` |
+| 列 | 类型 | 必需 | 说明 |
+|---|---|---|---|
+| `image_path` | str | 是 | 本地图片路径 |
+| `personal_score` | int (1..5) | 是 | 你的打分 |
+| `split` | str | 是 | `train` / `val` / `test` |
+| `scorer_a`,`scorer_b` | float | 否 | 外部打分器，存档给 v2，v1 不读取 |
 
-- 表名/列名作为导出脚本的参数（CLI flag 或小配置），**待真实 schema 填入**；不阻塞其余开发——可先用 mock parquet 跑通。
-- split：固定随机种子，**按 `image_path` 去重后划分**（默认 0.85 / 0.10 / 0.05），保证同图不跨 split。
-- `scorer_a`/`scorer_b` 列若库中存在则一并导出存档（v2 用），v1 不读取。
+- `assign_splits(paths, ratios, seed)`：按 `image_path` 去重分配 split（默认 0.85/0.10/0.05），同图不跨 split。
+- `validate_manifest(df)`：**契约强制点**——校验必需列、`personal_score` 整数且 ∈[1,5]、`split` 合法、`image_path` 非空。
+- `write_manifest(df, path)`：先校验再写 parquet。Dataset 加载时也会跑 `validate_manifest`。
+
+**DB 导出只是众多数据源之一的示例**（`scripts/export_manifest.py`，依赖可选 `postgres` extra：`uv sync --extra postgres`），不是必经路径；表名/列名作为脚本参数传入。
 
 ### 3.2 数据集（`silva/data/dataset.py`）
 
@@ -148,7 +151,7 @@ silva/
   silva/
     config.py              # Pydantic 配置模型
     data/
-      export_manifest.py
+      manifest.py          # 契约：schema + assign_splits + validate + write
       dataset.py
     models/
       ordinal_head.py
