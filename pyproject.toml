@@ -72,3 +72,14 @@ fixable = ["F401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# CUDA build of torch (driver supports CUDA 13.2 -> cu132). Pinning the index here
+# keeps `uv sync` from falling back to the CPU wheel.
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu132" }
+torchvision = { index = "pytorch-cu132" }
