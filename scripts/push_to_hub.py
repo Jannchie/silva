@@ -5,13 +5,16 @@ Loads a ``best.pt`` checkpoint (``{model, config, metrics}``), rebuilds the head
 ``config.json`` + a generated ``README.md`` model card to a model repo. Only the
 head ships — the frozen SigLIP2 backbone is upstream (see the model card).
 
+Runs in the workspace venv (``uv sync --all-packages``), which has the ``silva``
+library (huggingface-hub) and ``silva-train`` (evaluate + model card) installed.
+
 Usage:
-    huggingface-cli login        # once, or pass HF_TOKEN in the environment
-    uv run --extra hub python scripts/push_to_hub.py \
+    hf auth login                # once, or pass HF_TOKEN in the environment
+    uv run python scripts/push_to_hub.py \
         --checkpoint outputs/v1_stage1_head/best.pt \
         --repo-id <user>/silva-aesthetic
     # dry run — write the repo files locally without uploading:
-    uv run --extra hub python scripts/push_to_hub.py --repo-id <user>/silva --dry-run
+    uv run python scripts/push_to_hub.py --repo-id <user>/silva --dry-run
 """
 
 from __future__ import annotations
