@@ -1,77 +1,87 @@
 # SILVA
 
-**S**igLIP-based **I**llustration **V**isual **A**esthetic Scorer — a personal aesthetic
-scorer trained on your own 1~5 ratings. Trained as ordinal regression; outputs a
-continuous score.
+**S**igLIP-based **I**llustration **V**isual **A**esthetic Scorer — learns *one person's*
+taste from their own 1–5 ratings and scores any illustration on a continuous scale.
 
-- **Input**: precomputed **SigLIP2-SO400M-384 embeddings** (1152-d). v1 freezes the
-  backbone, so embeddings are computed upstream by an adapter — the training library
-  itself has no backbone and no `transformers` dependency.
-- **Head**: ordinal head with learnable monotone thresholds, plus optional automatic
-  per-threshold class balancing (`pos_weight`).
-- **Canonical output**: `score ∈ [0, 1]` (mean of the 4 threshold probabilities,
-  i.e. "fraction of quality bars cleared"). Rescale to any range with
-  `lo + (hi - lo) * score`. Labels, training, and `MAE/RMSE` stay in `1~5` space.
+It is not a universal quality model. You feed it your ratings, it fits an ordinal-regression
+head on top of frozen `google/siglip2-so400m-patch14-384` embeddings, and the score reflects
+*your* preferences — nobody else's. The backbone stays frozen, so a run only trains a ~7 MB
+head over precomputed embeddings: minutes on a GPU, and it runs on CPU too.
 
-Design spec: [`docs/superpowers/specs/2026-05-24-silva-design.md`](docs/superpowers/specs/2026-05-24-silva-design.md).
+- **Input**: 1152-d SigLIP2-SO400M-384 embeddings, computed upstream by an adapter — so the
+  training library has no `transformers` dependency.
+- **Head**: learnable monotone ordinal thresholds, with optional per-threshold class balancing.
+- **Output**: `score ∈ [0, 1]` (fraction of quality bars cleared) or `ordinal_score ∈ [1, 5]`
+  in label space. Metrics (MAE / RMSE / Spearman / QWK) stay in 1–5 space.
 
-## Setup
+## Packages
+
+This is a uv workspace of two packages:
+
+| Package | Install | Role |
+|---|---|---|
+| [`silva`](packages/silva) | `pip install silva` | Inference library + `silva` CLI. Published to PyPI. |
+| [`silva-train`](packages/silva-train) | workspace-only | Training, evaluation, manifest tooling. Private. |
+
+Already have a trained head on the Hub? You only need `silva` — see its
+[README](packages/silva#readme).
+
+## Setup (development)
 
 ```bash
-uv sync
+uv sync                 # GPU-ready: torch is pinned to a CUDA build (cu132)
+uv sync --extra export  # + sqlite-vec, to read embeddings from the pictoria adapter
 ```
 
-`torch` is pinned to a CUDA build (cu132) in `pyproject.toml`, so `uv sync` is
-GPU-ready out of the box (NVIDIA driver must support CUDA ≥ 13.2). Training also
-runs on CPU (`mixed_precision: no`). The pictoria SQLite adapter needs an optional
-extra (sqlite-vec) to read the embedding table:
+`torch` is pinned to cu132, so `uv sync` is GPU-ready out of the box (NVIDIA driver must
+support CUDA ≥ 13.2). Training also runs on CPU.
+
+## End-to-end workflow
+
+**1. Build a manifest** — a columnar parquet matching the contract in `silva_train.data.manifest`:
+
+| column | type | required | notes |
+|---|---|---|---|
+| `embedding` | list<float>[1152] | yes | SigLIP2 image embedding |
+| `personal_score` | int 1..5 | yes | your rating |
+| `split` | `train`/`val`/`test` | yes | use `assign_splits` for leakage-free splits |
+| `post_id` | int | no | provenance / dedup key |
+
+An adapter for the pictoria SQLite DB ships in `scripts/`:
 
 ```bash
-uv sync --extra export
+uv run python scripts/export_manifest.py \
+    --db /path/to/pictoria.sqlite \
+    --output data/manifest.parquet
 ```
 
-## Workflow
+Any other source works the same way — call `build_manifest` / `write_manifest` to emit the
+columns above. `validate_manifest` enforces the contract on load.
 
-1. **Produce a manifest** — a columnar parquet matching the contract in
-   `silva.data.manifest`. The training library depends only on this shape and is
-   blind to where embeddings come from.
+**2. Train** the ordinal head:
 
-   | column | type | required | notes |
-   |---|---|---|---|
-   | `embedding` | list<float>[D] | yes | fixed-dimension feature vector (v1: 1152) |
-   | `personal_score` | int 1..5 | yes | your rating |
-   | `split` | `train`/`val`/`test` | yes | use `assign_splits` for leakage-free splits |
-   | `post_id` | int | no | provenance / split-dedup key |
+```bash
+uv run accelerate launch -m silva_train.train --config configs/v1_stage1_head.yaml
+```
 
-   An adapter for the pictoria SQLite library is provided. It reads precomputed
-   SigLIP2 embeddings (`post_vectors_siglip2`) joined with your scores
-   (`posts.score`, filtered to `score > 0`):
+Saves the best checkpoint (by Spearman) to `outputs/v1_stage1_head/best.pt`.
 
-   ```bash
-   uv run python scripts/export_manifest.py \
-       --db /mnt/e/pictoria/server/illustration/images/.pictoria/pictoria.sqlite \
-       --output data/manifest.parquet
-   ```
+**3. Evaluate** on a split:
 
-   Any other source works the same way — call `build_manifest` / `write_manifest`
-   to emit the columns above; `validate_manifest` (also run on dataset load)
-   enforces the contract.
+```bash
+uv run python -m silva_train.evaluate --checkpoint outputs/v1_stage1_head/best.pt --split val
+```
 
-2. **Train** the ordinal head on the embeddings:
+Reports MAE, RMSE, Pearson, Spearman, QWK, Top-1% / Top-5% precision.
 
-   ```bash
-   uv run accelerate launch -m silva.train --config configs/v1_stage1_head.yaml
-   ```
+**4. Score images** once a head is published to the Hub:
 
-   Saves the best checkpoint (by Spearman) to `outputs/v1_stage1_head/best.pt`.
+```bash
+pip install "silva[backbone]"
+silva score image.jpg --repo-id Jannchie/silva-aesthetic
+```
 
-3. **Evaluate** a checkpoint on a split:
-
-   ```bash
-   uv run python -m silva.evaluate --checkpoint outputs/v1_stage1_head/best.pt --split val
-   ```
-
-   Reports MAE, RMSE, Pearson, Spearman, QWK, Top-1%/Top-5% precision.
+See [`packages/silva`](packages/silva#readme) for the Python API.
 
 ## Tests
 
@@ -79,13 +89,11 @@ uv sync --extra export
 uv run pytest
 ```
 
-Covers pure logic (ordinal targets, `pos_weight`, threshold monotonicity, score
-reconstruction, all metrics, leakage-free splits, manifest contract) plus an
-end-to-end training smoke test on toy embeddings (runs by default, CPU-only).
+Covers pure logic (ordinal targets, threshold monotonicity, score reconstruction, all metrics,
+leakage-free splits, manifest contract) plus a CPU-only end-to-end training smoke test.
 
 ## Scope (v1)
 
-Personal score only. External AI scorers, LoRA / full fine-tune, distribution head,
-and serving are deferred — the multi-task loss hook is reserved in code, and the
-external scorers in the DB (`post_aesthetic_scores`, `post_waifu_scores`) can be
-added as manifest columns + aux heads when needed.
+Personal score only. External AI scorers, LoRA / full fine-tune, distribution head, and serving
+are deferred. Design spec:
+[`docs/superpowers/specs/2026-05-24-silva-design.md`](docs/superpowers/specs/2026-05-24-silva-design.md).
