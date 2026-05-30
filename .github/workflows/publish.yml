@@ -1,14 +1,16 @@
 name: Publish silva to PyPI
 
-# Publishes the `silva` inference library (packages/silva) to PyPI on GitHub Release.
+# Publishes the `silva` inference library (packages/silva, distribution `silva-scorer`)
+# to PyPI when a version tag is pushed (e.g. `v0.1.0`), or on manual dispatch.
 # Auth is PyPI Trusted Publishing (OIDC) — no API token is stored in the repo.
 # One-time PyPI setup: project "silva-scorer" -> Publishing -> add a GitHub publisher with
 #   owner=Jannchie, repo=silva, workflow=publish.yml, environment=pypi
 # (use a "pending publisher" on your account's Publishing page until silva-scorer first exists).
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch: {}
 
 jobs:
@@ -25,8 +27,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
+      # The published version comes from pyproject.toml, not the tag — fail loudly on a
+      # tag that doesn't match so we never ship a different version than the tag implies.
+      - name: Check tag matches package version
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(grep -m1 '^version' packages/silva/pyproject.toml | cut -d'"' -f2)"
+          echo "tag=$tag  pyproject=$pkg"
+          test "$tag" = "$pkg"
+
       - name: Build the silva inference library only
-        run: uv build --package silva
+        run: uv build --package silva-scorer
 
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
