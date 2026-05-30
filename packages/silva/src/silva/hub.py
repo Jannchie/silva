@@ -1,7 +1,8 @@
 """Hugging Face Hub integration for the personal aesthetic head.
 
-Kept separate from :mod:`silva.models.aesthetic` so the core training library
-stays free of a ``huggingface_hub`` dependency (install with the ``hub`` extra).
+Lives in the ``silva`` inference library; ``huggingface-hub`` is a core dependency,
+so no extra is needed. Kept separate from :mod:`silva.models.aesthetic` so the model
+definition itself carries no Hub coupling.
 
 ``HubAestheticModel`` is :class:`~silva.models.aesthetic.EmbeddingAestheticModel`
 plus :class:`~huggingface_hub.PyTorchModelHubMixin`, which serialises the model to
