@@ -20,3 +20,7 @@ wheels/
 *.ckpt
 *.pt
 *.safetensors
+
+# Hugging Face publish artifacts (scripts/push_to_hub.py --dry-run)
+/hub_export/
+hub_export_readme.md

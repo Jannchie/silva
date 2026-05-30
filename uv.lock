@@ -1237,6 +1237,9 @@ dependencies = [
 export = [
     { name = "sqlite-vec" },
 ]
+hub = [
+    { name = "huggingface-hub" },
+]
 wandb = [
     { name = "wandb" },
 ]
@@ -1250,6 +1253,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=0.34" },
+    { name = "huggingface-hub", marker = "extra == 'hub'", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pyarrow", specifier = ">=17" },
@@ -1260,7 +1264,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cu132" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.17" },
 ]
-provides-extras = ["export", "wandb"]
+provides-extras = ["export", "wandb", "hub"]
 
 [package.metadata.requires-dev]
 dev = [
