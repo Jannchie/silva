@@ -2,7 +2,7 @@
 members = ["packages/*"]
 
 [tool.uv.sources]
-silva = { workspace = true }
+silva-scorer = { workspace = true }
 torch = { index = "pytorch-cu132" }
 
 # CUDA build of torch (driver supports CUDA 13.2 -> cu132). Pinning the index here

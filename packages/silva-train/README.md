@@ -41,12 +41,12 @@ uv run accelerate launch -m silva_train.train --config configs/v1_stage1_head.ya
 Configs live in `configs/` — `v1_stage1_head.yaml` for production, `sample_cpu.yaml` for a quick
 CPU run. The loss combines ordinal cross-entropy with optional pairwise-ranking and soft-Spearman
 terms, plus per-threshold class balancing. The best checkpoint (by Spearman) lands in
-`outputs/<run>/best.pt` as `{model, config, metrics}`.
+`outputs/<run>/` as `best.safetensors` (weights) + `best.json` (config + metrics) — no pickle.
 
 ## Evaluate
 
 ```bash
-uv run python -m silva_train.evaluate --checkpoint outputs/v1_stage1_head/best.pt --split val
+uv run python -m silva_train.evaluate --checkpoint outputs/v1_stage1_head --split val
 ```
 
 Reports MAE, RMSE, Pearson, Spearman, and quadratic weighted kappa in 1–5 label space.
@@ -55,7 +55,7 @@ Reports MAE, RMSE, Pearson, Spearman, and quadratic weighted kappa in 1–5 labe
 
 ```bash
 uv run python scripts/push_to_hub.py \
-    --checkpoint outputs/v1_stage1_head/best.pt \
+    --checkpoint outputs/v1_stage1_head \
     --repo-id Jannchie/silva-aesthetic
 ```
 

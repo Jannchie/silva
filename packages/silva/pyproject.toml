@@ -3,20 +3,57 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "silva"
+# Distribution name (the PyPI project): "silva" is taken by an unrelated CMS, so we ship
+# as "silva-scorer". The import package stays `silva` (see [tool.hatch...] below).
+name = "silva-scorer"
 version = "0.1.0"
 description = "SILVA: SigLIP-based Illustration Visual Aesthetic Scorer (inference library)"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jianqi Pan", email = "jannchie@gmail.com" }]
+maintainers = [{ name = "Jianqi Pan", email = "jannchie@gmail.com" }]
+keywords = [
+    "aesthetic",
+    "scoring",
+    "siglip",
+    "siglip2",
+    "illustration",
+    "image-quality",
+    "ordinal-regression",
+    "computer-vision",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Typing :: Typed",
+]
 dependencies = [
     "torch>=2.4",
     "huggingface-hub>=0.24",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Jannchie/silva"
+Repository = "https://github.com/Jannchie/silva"
+Issues = "https://github.com/Jannchie/silva/issues"
+Model = "https://huggingface.co/Jannchie/silva-aesthetic"
+
 [project.optional-dependencies]
 # End-to-end image -> score and the `silva` CLI. Core install does NOT need these.
+# transformers floor is >=5.0: 4.x up to 4.57.6 carry CVE-2025-14929 (PYSEC-2025-217,
+# X-CLIP checkpoint deserialization RCE), fixed in 5.0.0. silva only ever loads SigLIP2,
+# so it isn't exploitable in practice, but the floor keeps scanners and users on a safe build.
 backbone = [
-    "transformers>=4.45",
+    "transformers>=5.0",
     "pillow>=10",
 ]
 

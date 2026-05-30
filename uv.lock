@@ -12,7 +12,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "silva",
+    "silva-scorer",
     "silva-train",
 ]
 
@@ -1388,7 +1388,7 @@ wheels = [
 ]
 
 [[package]]
-name = "silva"
+name = "silva-scorer"
 version = "0.1.0"
 source = { editable = "packages/silva" }
 dependencies = [
@@ -1407,7 +1407,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.24" },
     { name = "pillow", marker = "extra == 'backbone'", specifier = ">=10" },
     { name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cu132" },
-    { name = "transformers", marker = "extra == 'backbone'", specifier = ">=4.45" },
+    { name = "transformers", marker = "extra == 'backbone'", specifier = ">=5.0" },
 ]
 provides-extras = ["backbone"]
 
@@ -1422,8 +1422,9 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "safetensors" },
     { name = "scipy" },
-    { name = "silva" },
+    { name = "silva-scorer" },
     { name = "torch" },
 ]
 
@@ -1443,8 +1444,9 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=17" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "safetensors", specifier = ">=0.4" },
     { name = "scipy", specifier = ">=1.13" },
-    { name = "silva", editable = "packages/silva" },
+    { name = "silva-scorer", editable = "packages/silva" },
     { name = "sqlite-vec", marker = "extra == 'export'", specifier = ">=0.1" },
     { name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cu132" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.17" },

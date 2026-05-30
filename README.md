@@ -11,8 +11,8 @@ head over precomputed embeddings: minutes on a GPU, and it runs on CPU too.
 - **Input**: 1152-d SigLIP2-SO400M-384 embeddings, computed upstream by an adapter — so the
   training library has no `transformers` dependency.
 - **Head**: learnable monotone ordinal thresholds, with optional per-threshold class balancing.
-- **Output**: `score ∈ [0, 1]` (fraction of quality bars cleared) or `ordinal_score ∈ [1, 5]`
-  in label space. Metrics (MAE / RMSE / Spearman / QWK) stay in 1–5 space.
+- **Output**: a single `score ∈ [0, 1]` (fraction of quality bars cleared). Training
+  metrics (MAE / RMSE / Spearman / QWK) are computed in the 1–5 label space.
 
 ## Packages
 
@@ -20,7 +20,7 @@ This is a uv workspace of two packages:
 
 | Package | Install | Role |
 |---|---|---|
-| [`silva`](packages/silva) | `pip install silva` | Inference library + `silva` CLI. Published to PyPI. |
+| [`silva`](packages/silva) | `pip install silva-scorer` | Inference library + `silva` CLI. Published to PyPI (imports as `silva`). |
 | [`silva-train`](packages/silva-train) | workspace-only | Training, evaluation, manifest tooling. Private. |
 
 Already have a trained head on the Hub? You only need `silva` — see its
@@ -64,12 +64,12 @@ columns above. `validate_manifest` enforces the contract on load.
 uv run accelerate launch -m silva_train.train --config configs/v1_stage1_head.yaml
 ```
 
-Saves the best checkpoint (by Spearman) to `outputs/v1_stage1_head/best.pt`.
+Saves the best checkpoint (by Spearman) to `outputs/v1_stage1_head/` as `best.safetensors` + `best.json`.
 
 **3. Evaluate** on a split:
 
 ```bash
-uv run python -m silva_train.evaluate --checkpoint outputs/v1_stage1_head/best.pt --split val
+uv run python -m silva_train.evaluate --checkpoint outputs/v1_stage1_head --split val
 ```
 
 Reports MAE, RMSE, Pearson, Spearman, QWK, Top-1% / Top-5% precision.
@@ -77,7 +77,7 @@ Reports MAE, RMSE, Pearson, Spearman, QWK, Top-1% / Top-5% precision.
 **4. Score images** once a head is published to the Hub:
 
 ```bash
-pip install "silva[backbone]"
+pip install "silva-scorer[backbone]"
 silva score image.jpg --repo-id Jannchie/silva-aesthetic
 ```
 
