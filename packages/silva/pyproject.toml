@@ -6,10 +6,10 @@ build-backend = "hatchling.build"
 # Distribution name (the PyPI project): "silva" is taken by an unrelated CMS, so we ship
 # as "silva-scorer". The import package stays `silva` (see [tool.hatch...] below).
 name = "silva-scorer"
-version = "0.1.0"
+version = "0.1.1"
 description = "SILVA: SigLIP-based Illustration Visual Aesthetic Scorer (inference library)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Jianqi Pan", email = "jannchie@gmail.com" }]
@@ -30,6 +30,8 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
