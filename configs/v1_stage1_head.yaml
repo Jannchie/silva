@@ -1,8 +1,8 @@
 # SILVA v1 — train the ordinal head on precomputed SigLIP2 embeddings.
 model:
   embedding_dim: 1152  # SigLIP2-SO400M pooled feature width
-  dropout: 0.1
-  hidden_dims: [1024, 512, 256]   # deeper trunk: single-model test Spearman 0.733 (5-seed ensemble 0.762)
+  dropout: 0.3                    # retuned: deep trunk overfits (train 0.94 vs val); 0.3+wd0.05 is the sweet spot (val +0.011)
+  hidden_dims: [1024, 512, 256]   # deeper trunk: single-model test Spearman 0.738 (val 0.738)
 
 data:
   manifest_path: data/manifest.parquet
@@ -13,7 +13,7 @@ train:
   grad_accum: 1
   epochs: 40                 # deeper head needs longer; best calibration at 40 (sweep round 4-5)
   lr_head: 1.5e-3            # retuned for the deeper trunk: 3e-4 under-trained it (val +0.008)
-  weight_decay: 0.01
+  weight_decay: 0.05         # paired with dropout 0.3 to curb the deep-trunk overfit (wd alone was noise)
   warmup_ratio: 0.03         # scheduler *type* (onecycle/constant) was noise; lr is the lever
   max_grad_norm: 1.0
   use_pos_weight: true       # auto per-threshold class balancing

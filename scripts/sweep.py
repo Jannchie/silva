@@ -68,11 +68,12 @@ def make_loss(ranking: float = 0.0, soft_sp: float = 0.0, listwise: float = 0.0)
     return loss_fn
 
 
-def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_size, sched="cosine"):  # noqa: PLR0913
+def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_size, sched="cosine", weight_decay=0.01, noise_std=0.0):  # noqa: PLR0913
     x_tr, y_tr, x_val, y_val = data["train"][0], data["train"][1], data["val"][0], data["val"][1]
     torch.manual_seed(seed)
     model = EmbeddingAestheticModel(embedding_dim=x_tr.shape[1], dropout=dropout, hidden_dims=hidden_dims).to(DEVICE)
-    opt = AdamW(model.parameters(), lr=lr, weight_decay=0.01)
+    opt = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    feat_std = x_tr.std()  # scale Gaussian input noise relative to feature spread
     pos_weight = compute_pos_weight(y_tr).to(DEVICE)
 
     n = x_tr.shape[0]
@@ -88,7 +89,10 @@ def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_s
         perm = torch.randperm(n, device=DEVICE)
         for b in range(steps_per_epoch):
             idx = perm[b * batch_size : (b + 1) * batch_size]
-            out = model(x_tr[idx])
+            xb = x_tr[idx]
+            if noise_std > 0:  # embedding-space augmentation (no images to augment)
+                xb = xb + noise_std * feat_std * torch.randn_like(xb)
+            out = model(xb)
             loss = loss_fn(out["logits"], y_tr[idx], pos_weight)
             opt.zero_grad()
             loss.backward()
@@ -109,18 +113,24 @@ def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_s
     model.eval()
     with torch.no_grad():
         test_pred = model(data["test"][0])["ordinal_score"]
+        train_sp = compute_metrics(model(x_tr)["ordinal_score"], y_tr)["spearman"]
     test_metrics = compute_metrics(test_pred, data["test"][1])
-    return best_val, test_metrics, test_pred.float().cpu()
+    return best_val, test_metrics, test_pred.float().cpu(), train_sp
 
 
-# Round 4: fix the winning arch+loss; sweep lr x scheduler x epochs.
-_ARCH = dict(hidden_dims=[1024, 512, 256], loss_fn=make_loss(ranking=1.0, soft_sp=0.5))
+# Round 6: fix the winning arch+loss+lr; attack the train(0.95)->val(0.72) overfit gap
+# with stronger regularisation + embedding-space augmentation (no images to augment).
+_ARCH = dict(hidden_dims=[1024, 512, 256], loss_fn=make_loss(ranking=1.0, soft_sp=0.5), lr=1.5e-3, sched="cosine", epochs=40)
 EXPERIMENTS = [
-    ("lr1e-3 cosine 24", dict(**_ARCH, lr=1e-3, sched="cosine", epochs=24)),
-    ("lr1.5e-3 cosine 24", dict(**_ARCH, lr=1.5e-3, sched="cosine", epochs=24)),
-    ("lr2e-3 cosine 24", dict(**_ARCH, lr=2e-3, sched="cosine", epochs=24)),
-    ("lr1e-3 cosine 40", dict(**_ARCH, lr=1e-3, sched="cosine", epochs=40)),
-    ("lr1.5e-3 cosine 40", dict(**_ARCH, lr=1.5e-3, sched="cosine", epochs=40)),
+    ("baseline d0.1 wd0.01", dict(**_ARCH, dropout=0.1, weight_decay=0.01)),
+    ("dropout0.3", dict(**_ARCH, dropout=0.3, weight_decay=0.01)),
+    ("dropout0.5", dict(**_ARCH, dropout=0.5, weight_decay=0.01)),
+    ("wd0.05", dict(**_ARCH, dropout=0.1, weight_decay=0.05)),
+    ("wd0.1", dict(**_ARCH, dropout=0.1, weight_decay=0.1)),
+    ("dropout0.3 wd0.05", dict(**_ARCH, dropout=0.3, weight_decay=0.05)),
+    ("noise0.1", dict(**_ARCH, dropout=0.1, weight_decay=0.01, noise_std=0.1)),
+    ("noise0.3", dict(**_ARCH, dropout=0.1, weight_decay=0.01, noise_std=0.3)),
+    ("dropout0.3 noise0.2", dict(**_ARCH, dropout=0.3, weight_decay=0.01, noise_std=0.2)),
 ]
 
 
@@ -137,30 +147,32 @@ def main() -> None:
     data = {s: load_split(df, s) for s in ("train", "val", "test")}
     print(f"device={DEVICE} train={data['train'][0].shape} seeds={args.seeds} epochs={args.epochs}\n")
 
-    print(f"{'experiment':<34} {'val_sp':>7} {'test_sp':>8} {'test_pear':>9} {'top5%':>6} {'mae':>6}")
-    print("-" * 80)
+    print(f"{'experiment':<34} {'train':>6} {'val_sp':>7} {'test_sp':>8} {'gap':>6} {'top5%':>6} {'mae':>6}")
+    print("-" * 84)
     for name, spec in EXPERIMENTS:
         if args.only and args.only not in name:
             continue
         spec = dict(spec)
         spec.setdefault("dropout", 0.1)
-        vals, tests, preds = [], [], []
+        vals, tests, preds, trains = [], [], [], []
         for seed in args.seeds:
-            v, t, p = train_once(
+            v, t, p, tr = train_once(
                 data, hidden_dims=spec["hidden_dims"], loss_fn=spec["loss_fn"], dropout=spec["dropout"],
                 seed=seed, epochs=spec.get("epochs", args.epochs), lr=spec.get("lr", args.lr),
                 batch_size=args.batch_size, sched=spec.get("sched", "cosine"),
+                weight_decay=spec.get("weight_decay", 0.01), noise_std=spec.get("noise_std", 0.0),
             )
             vals.append(v)
             tests.append(t)
             preds.append(p)
+            trains.append(tr)
+        trn = float(np.mean(trains))
         vm = float(np.mean(vals))
         tsp = float(np.mean([t["spearman"] for t in tests]))
-        tpe = float(np.mean([t["pearson"] for t in tests]))
         t5 = float(np.mean([t["top_5pct"] for t in tests]))
         mae = float(np.mean([t["mae"] for t in tests]))
         std = f"+-{np.std([t['spearman'] for t in tests]):.3f}" if len(args.seeds) > 1 else ""
-        print(f"{name:<34} {vm:>7.4f} {tsp:>8.4f}{std:<6} {tpe:>9.4f} {t5:>6.3f} {mae:>6.3f}")
+        print(f"{name:<34} {trn:>6.3f} {vm:>7.4f} {tsp:>8.4f}{std:<6} {trn - vm:>6.3f} {t5:>6.3f} {mae:>6.3f}")
         if len(args.seeds) > 1:
             ens = compute_metrics(torch.stack(preds).mean(dim=0), data["test"][1].cpu())
             tag = f"  └ ensemble x{len(args.seeds)}"
