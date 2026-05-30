@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "silva-train"
+version = "0.1.0"
+description = "SILVA training pipeline (private, not published)"
+requires-python = ">=3.12"
+dependencies = [
+    "silva",
+    "torch>=2.4",
+    "accelerate>=0.34",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "pydantic>=2",
+    "pyyaml>=6.0.2",
+]
+
+[project.optional-dependencies]
+# Only the pictoria SQLite adapter (scripts/export_manifest.py) needs sqlite-vec.
+export = ["sqlite-vec>=0.1"]
+# Optional experiment tracking (silva_train.train report_to: wandb).
+wandb = ["wandb>=0.17"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/silva_train"]

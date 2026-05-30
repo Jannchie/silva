@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "silva"
+version = "0.1.0"
+description = "SILVA: SigLIP-based Illustration Visual Aesthetic Scorer (inference library)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.4",
+    "huggingface-hub>=0.24",
+]
+
+[project.optional-dependencies]
+# End-to-end image -> score and the `silva` CLI. Core install does NOT need these.
+backbone = [
+    "transformers>=4.45",
+    "pillow>=10",
+]
+
+[project.scripts]
+silva = "silva.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/silva"]

@@ -1,44 +1,19 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[project]
-name = "silva"
-version = "0.1.0"
-description = "SILVA: SigLIP-based Illustration Visual Aesthetic Scorer"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "torch>=2.4",
-    "accelerate>=0.34",
-    "pandas>=2.2",
-    "pyarrow>=17",
-    "numpy>=1.26",
-    "scipy>=1.13",
-    "pydantic>=2",
-    "pyyaml>=6.0.2",
-]
+[tool.uv.sources]
+silva = { workspace = true }
+torch = { index = "pytorch-cu132" }
 
-[project.optional-dependencies]
-# Only needed by the pictoria SQLite adapter (scripts/export_manifest.py) to read
-# the vec0 embedding table. The training library itself needs none of this.
-export = [
-    "sqlite-vec>=0.1",
-]
-# Optional experiment tracking (silva.train report_to: wandb). Run `wandb login` first.
-wandb = [
-    "wandb>=0.17",
-]
-# Optional Hugging Face Hub publishing (scripts/push_to_hub.py). Run `hf auth login` first.
-hub = [
-    "huggingface-hub>=0.24",
-]
+# CUDA build of torch (driver supports CUDA 13.2 -> cu132). Pinning the index here
+# keeps `uv sync` from falling back to the CPU wheel. Applies workspace-wide.
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
 
 [dependency-groups]
-dev = [
-    "pytest>=8",
-    "ruff",
-]
+dev = ["pytest>=8", "ruff"]
 
 [tool.ruff]
 exclude = [".venv", "wandb", "outputs", "scripts/sweep.py"]  # sweep.py: throwaway experiment harness
@@ -47,56 +22,18 @@ line-length = 160
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "RUF001",
-    "ANN401",
-    "PGH",
-    "RUF003",
-    "BLE001",
-    "ERA001",
-    "FIX002",
-    "TD002",
-    "TD003",
-    "D",
-    "A004",
-    "ANN201",
-    "B008",
-    "FAST002",
-    "INP001",
-    "PLR2004",
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-    "N812",
-    "COM812",
-    "T201",
-    "TRY003",
-    "EM102",
-    "G004",
-    "FBT001",
-    "FBT002",
-    "FBT003",
+    "RUF001", "ANN401", "PGH", "RUF003", "BLE001", "ERA001", "FIX002",
+    "TD002", "TD003", "D", "A004", "ANN201", "B008", "FAST002", "INP001",
+    "PLR2004", "C901", "PLR0912", "PLR0913", "PLR0915", "N812", "COM812",
+    "T201", "TRY003", "EM102", "G004", "FBT001", "FBT002", "FBT003",
 ]
-
 fixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
-"tests/*" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415", "PD008"]
+"**/tests/**" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415", "PD008"]
 "scripts/*" = ["PLC0415", "EM101"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["silva"]
-
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-
-# CUDA build of torch (driver supports CUDA 13.2 -> cu132). Pinning the index here
-# keeps `uv sync` from falling back to the CPU wheel.
-[[tool.uv.index]]
-name = "pytorch-cu132"
-url = "https://download.pytorch.org/whl/cu132"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu132" }
+testpaths = ["packages/silva/tests", "packages/silva-train/tests"]
+addopts = "--import-mode=importlib"
