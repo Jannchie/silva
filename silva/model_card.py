@@ -89,18 +89,20 @@ head = HubAestheticModel.from_pretrained("{repo_id}").to(device).eval()
 img = Image.open("your_image.jpg").convert("RGB")
 inputs = proc(images=img, return_tensors="pt").to(device)
 with torch.no_grad():
-    emb = backbone.get_image_features(**inputs)   # [1, 1152]
+    feats = backbone.get_image_features(pixel_values=inputs.pixel_values)
+    # newer transformers wraps the result; the pooled [1,1152] vector is .pooler_output
+    emb = feats.pooler_output if hasattr(feats, "pooler_output") else feats
     out = head(emb)
 
 print("score [0-1]:", out["score"].item())
 print("score [1-5]:", out["ordinal_score"].item())
 ```
 
-> ⚠️ **Embedding must match training.** These weights were trained on embeddings as
-> stored upstream. `get_image_features` returns the **un-normalised** pooled feature.
-> If your training embeddings were L2-normalised, add
-> `emb = torch.nn.functional.normalize(emb, dim=-1)` before calling the head — otherwise
-> the scores will be wrong. Verify against the pipeline that produced your training data.
+> ⚠️ **Backbone & pooling must match training.** Use exactly `{backbone}` (**patch14**) and the
+> **raw pooled** feature (`pooler_output`) — verified to match the training vectors at cosine
+> **0.9998**. The training embeddings are *un-normalised* (norm ≈ 15); the head's input `LayerNorm`
+> absorbs vector scale, so L2-normalising is harmless but unnecessary. A different backbone / patch
+> size / pooling will NOT work.
 
 ## Evaluation (held-out test split)
 

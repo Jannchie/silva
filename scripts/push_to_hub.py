@@ -25,7 +25,7 @@ import torch
 from silva.hub import HubAestheticModel
 from silva.model_card import render_model_card
 
-BACKBONE = "google/siglip2-so400m-patch16-384"
+BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)
 
 
 def main() -> None:
