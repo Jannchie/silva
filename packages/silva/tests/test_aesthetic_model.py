@@ -3,18 +3,19 @@ import torch
 from silva.models.aesthetic import EmbeddingAestheticModel
 
 
-def test_forward_returns_only_logits_and_score():
+def test_forward_shapes():
     model = EmbeddingAestheticModel(embedding_dim=16)
     out = model(torch.randn(3, 16))
-    assert set(out) == {"logits", "score"}  # ordinal_score dropped: it was just 1 + 4*score
     assert out["logits"].shape == (3, 4)
     assert out["score"].shape == (3,)
+    assert out["ordinal_score"].shape == (3,)
 
 
-def test_score_in_unit_range():
+def test_score_in_unit_range_and_ordinal_in_1_5():
     model = EmbeddingAestheticModel(embedding_dim=8)
     out = model(torch.randn(10, 8))
     assert torch.all((out["score"] >= 0) & (out["score"] <= 1))
+    assert torch.all((out["ordinal_score"] >= 1) & (out["ordinal_score"] <= 5))
 
 
 def test_no_backbone_no_transformers_dependency():
@@ -29,7 +30,7 @@ def test_mlp_head_adds_capacity_and_keeps_output_shape():
     assert sum(p.numel() for p in mlp.parameters()) > sum(p.numel() for p in linear.parameters())
     out = mlp(torch.randn(4, 16))
     assert out["logits"].shape == (4, 4)
-    assert out["score"].shape == (4,)
+    assert out["ordinal_score"].shape == (4,)
 
 
 def test_empty_hidden_dims_is_pure_linear_probe():
