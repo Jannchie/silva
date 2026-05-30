@@ -23,7 +23,6 @@ from pathlib import Path
 import torch
 
 from silva.hub import HubAestheticModel
-
 from silva_train.model_card import render_model_card
 
 BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)

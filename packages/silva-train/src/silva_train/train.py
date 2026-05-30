@@ -15,7 +15,6 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
-
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.losses import compute_pos_weight, silva_loss

@@ -8,7 +8,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
-
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.metrics import compute_metrics

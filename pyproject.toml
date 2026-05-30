@@ -29,9 +29,12 @@ ignore = [
 ]
 fixable = ["F401"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["silva", "silva_train"]
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
-"**/tests/**" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415", "PD008"]
+"**/tests/**" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415", "PD008", "ARG002"]
 "scripts/*" = ["PLC0415", "EM101"]
 
 [tool.pytest.ini_options]
