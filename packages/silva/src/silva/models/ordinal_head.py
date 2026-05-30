@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from silva.losses import NUM_THRESHOLDS
+from silva.scoring import NUM_THRESHOLDS
 
 
 class OrdinalHead(nn.Module):

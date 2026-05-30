@@ -15,7 +15,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from silva.losses import ordinal_score_from_logits, unit_score_from_logits
+from silva.scoring import unit_score_from_logits
 from silva.models.ordinal_head import OrdinalHead
 
 
@@ -50,5 +50,4 @@ class EmbeddingAestheticModel(nn.Module):
         return {
             "logits": logits,
             "score": unit_score_from_logits(logits),
-            "ordinal_score": ordinal_score_from_logits(logits),
         }
