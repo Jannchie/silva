@@ -23,7 +23,8 @@ from pathlib import Path
 import torch
 
 from silva.hub import HubAestheticModel
-from silva.model_card import render_model_card
+
+from silva_train.model_card import render_model_card
 
 BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)
 
@@ -46,7 +47,7 @@ def main() -> None:
     metrics = ckpt.get("metrics", {})
     manifest = args.manifest or ckpt["config"]["data"]["manifest_path"]
     if Path(manifest).exists():
-        from silva.evaluate import evaluate
+        from silva_train.evaluate import evaluate
 
         metrics = evaluate(
             args.checkpoint, manifest, "test",

@@ -16,7 +16,7 @@ import sqlite3
 
 import pandas as pd
 
-from silva.metrics import compute_metrics
+from silva_train.metrics import compute_metrics
 
 DEFAULT_DB = "E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite"
 

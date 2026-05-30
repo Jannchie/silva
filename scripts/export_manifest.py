@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from silva.data.manifest import build_manifest, write_manifest
+from silva_train.data.manifest import build_manifest, write_manifest
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

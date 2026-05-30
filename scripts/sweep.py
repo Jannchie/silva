@@ -18,14 +18,14 @@ import pandas as pd
 import torch
 from torch.optim import AdamW
 
-from silva.losses import (
+from silva_train.losses import (
     compute_pos_weight,
     listwise_loss,
     ordinal_loss,
     pairwise_ranking_loss,
     soft_spearman_loss,
 )
-from silva.metrics import compute_metrics
+from silva_train.metrics import compute_metrics
 from silva.models.aesthetic import EmbeddingAestheticModel
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
