@@ -33,7 +33,7 @@ class Embedder:
         try:
             from transformers import AutoModel, AutoProcessor  # noqa: PLC0415
         except ImportError as e:
-            msg = 'silva image scoring needs the backbone extra: pip install "silva[backbone]"'
+            msg = 'silva image scoring needs the backbone extra: pip install "silva-scorer[backbone]"'
             raise ImportError(msg) from e
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.processor = AutoProcessor.from_pretrained(BACKBONE)
@@ -48,11 +48,7 @@ class Embedder:
 
 
 @torch.no_grad()
-def score_images(images: Sequence[Image], head: nn.Module, embedder: Embedder) -> list[dict[str, float]]:
-    """Embed each image and run the head, returning ``{"score", "ordinal_score"}`` per image."""
+def score_images(images: Sequence[Image], head: nn.Module, embedder: Embedder) -> list[float]:
+    """Embed each image and run the head, returning the ``[0, 1]`` aesthetic score per image."""
     head.eval()
-    results: list[dict[str, float]] = []
-    for image in images:
-        out = head(embedder.embed(image))
-        results.append({"score": float(out["score"].item()), "ordinal_score": float(out["ordinal_score"].item())})
-    return results
+    return [float(head(embedder.embed(image))["score"].item()) for image in images]

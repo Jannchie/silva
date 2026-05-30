@@ -18,8 +18,8 @@ def test_score_images_runs_head_on_embedder_output():
 
     results = score_images(["fake-image"], head, DummyEmbedder())
     assert len(results) == 1
-    assert 0.0 <= results[0]["score"] <= 1.0
-    assert 1.0 <= results[0]["ordinal_score"] <= 5.0
+    assert isinstance(results[0], float)
+    assert 0.0 <= results[0] <= 1.0
 
 
 def test_cli_main_is_importable_without_backbone_extra():

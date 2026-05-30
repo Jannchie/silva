@@ -15,6 +15,8 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
+from silva.scoring import ordinal_score_from_logits
+from silva_train.checkpoint import save_checkpoint
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.losses import compute_pos_weight, silva_loss
@@ -43,7 +45,7 @@ def run_eval(model: torch.nn.Module, loader: DataLoader, accelerator: Accelerato
     targets: list[torch.Tensor] = []
     for batch in loader:
         out = model(batch["embedding"])
-        preds.append(accelerator.gather_for_metrics(out["ordinal_score"]).float().cpu())
+        preds.append(accelerator.gather_for_metrics(ordinal_score_from_logits(out["logits"])).float().cpu())
         targets.append(accelerator.gather_for_metrics(batch["score"]).float().cpu())
     return compute_metrics(torch.cat(preds), torch.cat(targets))
 
@@ -132,11 +134,8 @@ def train(config_path: str) -> dict[str, float]:
             best_metrics = metrics
             patience = 0
             if accelerator.is_main_process:
-                torch.save(
-                    {"model": accelerator.unwrap_model(model).state_dict(), "config": cfg.model_dump(), "metrics": metrics},
-                    output_dir / "best.pt",
-                )
-                accelerator.print(f"  saved best.pt ({cfg.train.early_stop_metric}={current:.4f})")
+                save_checkpoint(output_dir, accelerator.unwrap_model(model).state_dict(), cfg.model_dump(), metrics)
+                accelerator.print(f"  saved best.safetensors ({cfg.train.early_stop_metric}={current:.4f})")
         else:
             patience += 1
             if patience >= cfg.train.early_stop_patience:

@@ -8,6 +8,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
+from silva.scoring import ordinal_score_from_logits
+from silva_train.checkpoint import load_checkpoint
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.metrics import compute_metrics
@@ -25,10 +27,10 @@ def evaluate(
     num_workers: int = 4,
 ) -> dict[str, float]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    state, _config, _metrics = load_checkpoint(checkpoint)
 
     model = EmbeddingAestheticModel(embedding_dim=embedding_dim, dropout=dropout, hidden_dims=hidden_dims)
-    model.load_state_dict(ckpt["model"])
+    model.load_state_dict(state)
     model.to(device).eval()
 
     loader = DataLoader(AestheticDataset(manifest_path, split), batch_size=batch_size, num_workers=num_workers)
@@ -37,7 +39,7 @@ def evaluate(
     targets: list[torch.Tensor] = []
     for batch in loader:
         out = model(batch["embedding"].to(device))
-        preds.append(out["ordinal_score"].float().cpu())
+        preds.append(ordinal_score_from_logits(out["logits"]).float().cpu())
         targets.append(batch["score"].float())
     return compute_metrics(torch.cat(preds), torch.cat(targets))
 

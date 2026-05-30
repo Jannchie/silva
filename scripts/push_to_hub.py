@@ -1,6 +1,6 @@
 """Publish the trained aesthetic head to the Hugging Face Hub.
 
-Loads a ``best.pt`` checkpoint (``{model, config, metrics}``), rebuilds the head as
+Loads a ``best.safetensors`` + ``best.json`` checkpoint, rebuilds the head as
 :class:`~silva.hub.HubAestheticModel`, and pushes ``model.safetensors`` +
 ``config.json`` + a generated ``README.md`` model card to a model repo. Only the
 head ships — the frozen SigLIP2 backbone is upstream (see the model card).
@@ -11,7 +11,7 @@ library (huggingface-hub) and ``silva-train`` (evaluate + model card) installed.
 Usage:
     hf auth login                # once, or pass HF_TOKEN in the environment
     uv run python scripts/push_to_hub.py \
-        --checkpoint outputs/v1_stage1_head/best.pt \
+        --checkpoint outputs/v1_stage1_head \
         --repo-id <user>/silva-aesthetic
     # dry run — write the repo files locally without uploading:
     uv run python scripts/push_to_hub.py --repo-id <user>/silva --dry-run
@@ -23,9 +23,8 @@ import argparse
 import json
 from pathlib import Path
 
-import torch
-
 from silva.hub import HubAestheticModel
+from silva_train.checkpoint import load_checkpoint
 from silva_train.model_card import render_model_card
 
 BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)
@@ -33,7 +32,7 @@ BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in t
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Push the SILVA aesthetic head to the Hugging Face Hub.")
-    parser.add_argument("--checkpoint", default="outputs/v1_stage1_head/best.pt")
+    parser.add_argument("--checkpoint", default="outputs/v1_stage1_head", help="run dir (or its best.safetensors)")
     parser.add_argument("--repo-id", required=True, help="target repo, e.g. <user>/silva-aesthetic")
     parser.add_argument("--manifest", default=None, help="manifest for test-split eval (default: the one in the checkpoint config)")
     parser.add_argument("--private", action="store_true", help="create the repo as private")
@@ -41,13 +40,12 @@ def main() -> None:
     parser.add_argument("--commit-message", default="Upload SILVA aesthetic head")
     args = parser.parse_args()
 
-    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    model_cfg = ckpt["config"]["model"]
+    state, config, metrics = load_checkpoint(args.checkpoint)
+    model_cfg = config["model"]
 
     # The checkpoint's stored metrics are the *val* best; the card reports the held-out
     # *test* split, so re-evaluate on test when the manifest is available locally.
-    metrics = ckpt.get("metrics", {})
-    manifest = args.manifest or ckpt["config"]["data"]["manifest_path"]
+    manifest = args.manifest or config["data"]["manifest_path"]
     if Path(manifest).exists():
         from silva_train.evaluate import evaluate
 
@@ -64,7 +62,7 @@ def main() -> None:
         dropout=model_cfg.get("dropout", 0.1),
         hidden_dims=model_cfg.get("hidden_dims", []),
     )
-    model.load_state_dict(ckpt["model"])
+    model.load_state_dict(state)
     model.eval()
 
     card = render_model_card(repo_id=args.repo_id, backbone=BACKBONE, model_cfg=model_cfg, metrics=metrics)

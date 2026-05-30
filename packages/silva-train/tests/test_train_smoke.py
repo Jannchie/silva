@@ -57,5 +57,6 @@ def test_training_closed_loop(tmp_path):
 
     metrics = train(str(cfg_path))
 
-    assert (out_dir / "best.pt").exists()
+    assert (out_dir / "best.safetensors").exists()
+    assert (out_dir / "best.json").exists()
     assert "spearman" in metrics

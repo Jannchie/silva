@@ -27,6 +27,7 @@ from silva_train.losses import (
 )
 from silva_train.metrics import compute_metrics
 from silva.models.aesthetic import EmbeddingAestheticModel
+from silva.scoring import ordinal_score_from_logits
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MANIFEST = "data/manifest.parquet"
@@ -104,7 +105,7 @@ def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_s
 
         model.eval()
         with torch.no_grad():
-            sp = compute_metrics(model(x_val)["ordinal_score"], y_val)["spearman"]
+            sp = compute_metrics(ordinal_score_from_logits(model(x_val)["logits"]), y_val)["spearman"]
         if not math.isnan(sp) and sp > best_val:
             best_val = sp
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
@@ -112,8 +113,8 @@ def train_once(data, *, hidden_dims, loss_fn, dropout, seed, epochs, lr, batch_s
     model.load_state_dict(best_state)
     model.eval()
     with torch.no_grad():
-        test_pred = model(data["test"][0])["ordinal_score"]
-        train_sp = compute_metrics(model(x_tr)["ordinal_score"], y_tr)["spearman"]
+        test_pred = ordinal_score_from_logits(model(data["test"][0])["logits"])
+        train_sp = compute_metrics(ordinal_score_from_logits(model(x_tr)["logits"]), y_tr)["spearman"]
     test_metrics = compute_metrics(test_pred, data["test"][1])
     return best_val, test_metrics, test_pred.float().cpu(), train_sp
 

@@ -16,16 +16,15 @@ import torch
 from torch import nn
 
 from silva.models.ordinal_head import OrdinalHead
-from silva.scoring import ordinal_score_from_logits, unit_score_from_logits
+from silva.scoring import unit_score_from_logits
 
 
 class EmbeddingAestheticModel(nn.Module):
     """``embedding[D] -> LayerNorm -> Dropout -> [MLP trunk] -> ordinal head``.
 
     forward returns:
-      - ``logits``        : ordinal threshold logits ``[B, 4]``
-      - ``score``         : canonical output in ``[0, 1]`` (mean threshold prob)
-      - ``ordinal_score`` : label-space score in ``[1, 5]`` (readable metrics)
+      - ``logits`` : ordinal threshold logits ``[B, 4]``
+      - ``score``  : aesthetic score in ``[0, 1]`` (mean threshold prob)
     """
 
     def __init__(self, embedding_dim: int, dropout: float = 0.1, hidden_dims: list[int] | None = None) -> None:
@@ -47,8 +46,4 @@ class EmbeddingAestheticModel(nn.Module):
         x = self.dropout(x)
         x = self.trunk(x)
         logits = self.head(x)
-        return {
-            "logits": logits,
-            "score": unit_score_from_logits(logits),
-            "ordinal_score": ordinal_score_from_logits(logits),
-        }
+        return {"logits": logits, "score": unit_score_from_logits(logits)}

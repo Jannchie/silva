@@ -49,36 +49,33 @@ model-index:
 
 # SILVA — Personal Aesthetic Head
 
-Scores an illustration 1–5 by **one specific person's** taste — not a universal quality
-model, so it won't match anyone else's preferences.
+Scores an illustration by **one specific person's** taste — not a universal quality
+model, so it won't match anyone else's preferences. Output is a single number in
+`[0, 1]`; higher means more to this person's liking.
 
-**Only the head ships here (~7 MB), not an image model.** Feed it a 1152-d `{backbone}`
-image embedding (you run that backbone yourself) and it returns a score.
+**Only the head ships here (~7 MB), not an image model.** It runs on top of the frozen
+`{backbone}` backbone, which `silva[backbone]` installs and loads for you.
 
 ## Quickstart
 
 ```python
-import torch
-from PIL import Image
-from transformers import AutoModel, AutoProcessor
-from silva.hub import HubAestheticModel  # pip install "git+{REPO_URL}"
+# pip install "silva-scorer[backbone] @ git+{REPO_URL}"
+from silva import AestheticScorer
 
-dev = "cuda" if torch.cuda.is_available() else "cpu"
-proc = AutoProcessor.from_pretrained("{backbone}")
-backbone = AutoModel.from_pretrained("{backbone}").to(dev).eval()
-head = HubAestheticModel.from_pretrained("{repo_id}").to(dev).eval()
-
-img = Image.open("your_image.jpg").convert("RGB")
-px = proc(images=img, return_tensors="pt").to(dev).pixel_values
-with torch.no_grad():
-    feats = backbone.get_image_features(pixel_values=px)
-    emb = feats.pooler_output if hasattr(feats, "pooler_output") else feats  # [1, 1152]
-    out = head(emb)
-print(out["score"].item(), out["ordinal_score"].item())  # [0,1] and [1,5]
+scorer = AestheticScorer.from_pretrained("{repo_id}")
+print(scorer.score("your_image.jpg"))     # 0.73
+print(scorer.score(["a.jpg", "b.jpg"]))    # [0.73, 0.41]
 ```
 
-Backbone must be exactly `{backbone}` (**patch14**) with the raw `pooler_output` — verified
-against the training embeddings at cosine 0.9998. Anything else scores wrong.
+Already have `{backbone}` embeddings? Skip the backbone and score them directly:
+
+```python
+# pip install "silva-scorer @ git+{REPO_URL}"
+from silva import HubAestheticModel
+
+head = HubAestheticModel.from_pretrained("{repo_id}").eval()
+score = head(embedding)["score"]  # embedding: [B, 1152] raw pooler_output
+```
 
 ## Scores (held-out test split)
 

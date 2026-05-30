@@ -2,11 +2,12 @@
 
 from silva.hub import HubAestheticModel
 from silva.models.aesthetic import EmbeddingAestheticModel
-from silva.scoring import ordinal_score_from_logits, unit_score_from_logits
+from silva.scorer import AestheticScorer
+from silva.scoring import unit_score_from_logits
 
 __all__ = [
+    "AestheticScorer",
     "EmbeddingAestheticModel",
     "HubAestheticModel",
-    "ordinal_score_from_logits",
     "unit_score_from_logits",
 ]

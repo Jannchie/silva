@@ -18,16 +18,11 @@ def main() -> None:
     parser.add_argument("--device", default=None, help="torch device override (default: auto)")
     args = parser.parse_args()
 
-    from PIL import Image  # noqa: PLC0415
+    from silva.scorer import AestheticScorer  # noqa: PLC0415
 
-    from silva.backbone import Embedder, score_images  # noqa: PLC0415
-    from silva.hub import HubAestheticModel  # noqa: PLC0415
-
-    head = HubAestheticModel.from_pretrained(args.repo_id)
-    embedder = Embedder(device=args.device)
-    images = [Image.open(path) for path in args.images]
-    for path, res in zip(args.images, score_images(images, head, embedder), strict=True):
-        print(f"{path}\tscore={res['score']:.4f}\tordinal={res['ordinal_score']:.4f}")
+    scorer = AestheticScorer.from_pretrained(args.repo_id, device=args.device)
+    for path, score in zip(args.images, scorer.score(args.images), strict=True):
+        print(f"{path}\tscore={score:.4f}")
 
 
 if __name__ == "__main__":
