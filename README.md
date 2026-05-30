@@ -4,8 +4,11 @@
 scorer trained on your own 1~5 ratings. Trained as ordinal regression; outputs a
 continuous score.
 
-- **Backbone**: `google/siglip2-so400m-patch14-384` (frozen in v1).
-- **Head**: ordinal head with learnable monotone thresholds.
+- **Input**: precomputed **SigLIP2-SO400M-384 embeddings** (1152-d). v1 freezes the
+  backbone, so embeddings are computed upstream by an adapter — the training library
+  itself has no backbone and no `transformers` dependency.
+- **Head**: ordinal head with learnable monotone thresholds, plus optional automatic
+  per-threshold class balancing (`pos_weight`).
 - **Canonical output**: `score ∈ [0, 1]` (mean of the 4 threshold probabilities,
   i.e. "fraction of quality bars cleared"). Rescale to any range with
   `lo + (hi - lo) * score`. Labels, training, and `MAE/RMSE` stay in `1~5` space.
@@ -19,40 +22,42 @@ uv sync
 ```
 
 `torch` is pinned to a CUDA build (cu132) in `pyproject.toml`, so `uv sync` is
-GPU-ready out of the box (NVIDIA driver must support CUDA ≥ 13.2). The Postgres
-example producer needs an optional extra:
+GPU-ready out of the box (NVIDIA driver must support CUDA ≥ 13.2). Training also
+runs on CPU (`mixed_precision: no`). The pictoria SQLite adapter needs an optional
+extra (sqlite-vec) to read the embedding table:
 
 ```bash
-uv sync --extra postgres
-cp .env.example .env   # set DATABASE_URL
+uv sync --extra export
 ```
 
 ## Workflow
 
-1. **Produce a manifest** — a parquet matching the contract in `silva.data.manifest`.
-   The training pipeline depends only on this shape; the data source is up to you.
+1. **Produce a manifest** — a columnar parquet matching the contract in
+   `silva.data.manifest`. The training library depends only on this shape and is
+   blind to where embeddings come from.
 
    | column | type | required | notes |
    |---|---|---|---|
-   | `image_path` | str | yes | local image path |
+   | `embedding` | list<float>[D] | yes | fixed-dimension feature vector (v1: 1152) |
    | `personal_score` | int 1..5 | yes | your rating |
    | `split` | `train`/`val`/`test` | yes | use `assign_splits` for leakage-free splits |
-   | `scorer_a`, `scorer_b` | float | no | external scorers, stored for v2 |
+   | `post_id` | int | no | provenance / split-dedup key |
 
-   Add splits with `assign_splits`, then validate + write with `write_manifest`.
-   A Postgres source is provided as one example (optional extra):
+   An adapter for the pictoria SQLite library is provided. It reads precomputed
+   SigLIP2 embeddings (`post_vectors_siglip2`) joined with your scores
+   (`posts.score`, filtered to `score > 0`):
 
    ```bash
-   uv sync --extra postgres
    uv run python scripts/export_manifest.py \
-       --table my_table --image-col image_path --score-col my_score \
+       --db /mnt/e/pictoria/server/illustration/images/.pictoria/pictoria.sqlite \
        --output data/manifest.parquet
    ```
 
-   Any other source works the same way — emit a parquet with the columns above;
-   `validate_manifest` (also run on dataset load) enforces the contract.
+   Any other source works the same way — call `build_manifest` / `write_manifest`
+   to emit the columns above; `validate_manifest` (also run on dataset load)
+   enforces the contract.
 
-2. **Train** (Stage 1: frozen backbone + ordinal head):
+2. **Train** the ordinal head on the embeddings:
 
    ```bash
    uv run accelerate launch -m silva.train --config configs/v1_stage1_head.yaml
@@ -74,11 +79,13 @@ cp .env.example .env   # set DATABASE_URL
 uv run pytest
 ```
 
-Covers the pure logic: ordinal target conversion, threshold monotonicity, score
-reconstruction, all metrics, and leakage-free split assignment.
+Covers pure logic (ordinal targets, `pos_weight`, threshold monotonicity, score
+reconstruction, all metrics, leakage-free splits, manifest contract) plus an
+end-to-end training smoke test on toy embeddings (runs by default, CPU-only).
 
 ## Scope (v1)
 
 Personal score only. External AI scorers, LoRA / full fine-tune, distribution head,
-and serving are deferred — extension points are reserved in code (`aux_heads`, the
-multi-task loss hook, and the exported `scorer_a/b` columns).
+and serving are deferred — the multi-task loss hook is reserved in code, and the
+external scorers in the DB (`post_aesthetic_scores`, `post_waifu_scores`) can be
+added as manifest columns + aux heads when needed.

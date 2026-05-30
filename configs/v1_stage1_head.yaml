@@ -1,6 +1,6 @@
-# SILVA v1 — Stage 1: freeze SigLIP2 backbone, train only the ordinal head.
+# SILVA v1 — train the ordinal head on precomputed SigLIP2 embeddings.
 model:
-  model_id: google/siglip2-so400m-patch14-384
+  embedding_dim: 1152  # SigLIP2-SO400M pooled feature width
   dropout: 0.1
 
 data:
@@ -8,15 +8,15 @@ data:
   num_workers: 4
 
 train:
-  freeze_backbone: true
-  batch_size: 16
-  grad_accum: 2
+  batch_size: 256
+  grad_accum: 1
   epochs: 8
   lr_head: 3.0e-4
   weight_decay: 0.01
   warmup_ratio: 0.03
   max_grad_norm: 1.0
-  smooth_l1_weight: 0.2
+  use_pos_weight: true       # auto per-threshold class balancing
+  mixed_precision: bf16      # "no" to train on CPU
   eval_every: 1
   early_stop_metric: spearman
   early_stop_patience: 3

@@ -5,13 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class ModelConfig(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-
-    model_id: str = "google/siglip2-so400m-patch14-384"
+    embedding_dim: int = 1152  # SigLIP2-SO400M pooled feature width
     dropout: float = 0.1
 
 
@@ -21,15 +19,15 @@ class DataConfig(BaseModel):
 
 
 class TrainConfig(BaseModel):
-    freeze_backbone: bool = True
-    batch_size: int = 16
-    grad_accum: int = 2
+    batch_size: int = 256
+    grad_accum: int = 1
     epochs: int = 8
     lr_head: float = 3e-4
     weight_decay: float = 0.01
     warmup_ratio: float = 0.03
     max_grad_norm: float = 1.0
-    smooth_l1_weight: float = 0.2
+    use_pos_weight: bool = True  # auto per-threshold class balancing (compute_pos_weight)
+    mixed_precision: str = "bf16"  # accelerate mixed precision; "no" for CPU
     eval_every: int = 1
     early_stop_metric: str = "spearman"
     early_stop_patience: int = 3

@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from silva.losses import (
+    compute_pos_weight,
     make_ordinal_targets,
     ordinal_loss,
     ordinal_score_from_logits,
@@ -49,13 +50,35 @@ def test_ordinal_score_is_unit_rescaled_to_1_5():
     assert ordinal_score_from_logits(torch.zeros(1, 4)).item() == pytest.approx(3.0)
 
 
-def test_silva_loss_pure_ordinal_when_regression_is_zero():
-    # logits 0 -> ordinal_score 3.0; target 3 -> SmoothL1 = 0 -> total = log(2)
-    loss = silva_loss(torch.zeros(2, 4), torch.tensor([3, 3]), smooth_l1_weight=0.2)
-    assert loss.item() == pytest.approx(math.log(2))
+def test_silva_loss_is_pure_ordinal_bce():
+    # v1 loss is pure ordinal BCE — no regression term pulling predictions toward
+    # equidistant 1~5 labels (personal scores are deliberately non-equidistant).
+    logits = torch.zeros(2, 4)
+    scores = torch.tensor([5, 5])
+    assert silva_loss(logits, scores).item() == pytest.approx(ordinal_loss(logits, scores).item())
+    # logits 0, any score -> BCE only = log(2); the old SmoothL1 term would have added 0.3.
+    assert silva_loss(logits, scores).item() == pytest.approx(math.log(2))
 
 
-def test_silva_loss_adds_weighted_regression():
-    # ordinal_score 3.0 vs target 5 -> SmoothL1(diff=2, beta=1) = 1.5; total = log2 + 0.2*1.5
-    loss = silva_loss(torch.zeros(2, 4), torch.tensor([5, 5]), smooth_l1_weight=0.2)
-    assert loss.item() == pytest.approx(math.log(2) + 0.3)
+def test_compute_pos_weight_balances_each_threshold():
+    # one of each score 1..5:
+    #   >1: pos={2,3,4,5}=4 neg={1}=1     -> 0.25
+    #   >2: pos={3,4,5}=3   neg={1,2}=2   -> 2/3
+    #   >3: pos={4,5}=2     neg={1,2,3}=3 -> 1.5
+    #   >4: pos={5}=1       neg={1..4}=4  -> 4.0
+    pw = compute_pos_weight(torch.tensor([1, 2, 3, 4, 5]))
+    assert torch.allclose(pw, torch.tensor([0.25, 2 / 3, 1.5, 4.0]))
+
+
+def test_ordinal_loss_pos_weight_none_equals_unweighted():
+    logits, scores = torch.zeros(2, 4), torch.tensor([3, 3])
+    ones = torch.ones(4)
+    assert ordinal_loss(logits, scores, pos_weight=ones).item() == pytest.approx(
+        ordinal_loss(logits, scores).item()
+    )
+
+
+def test_ordinal_loss_pos_weight_changes_loss():
+    logits, scores = torch.zeros(2, 4), torch.tensor([3, 3])
+    weighted = ordinal_loss(logits, scores, pos_weight=torch.full((4,), 2.0)).item()
+    assert weighted != pytest.approx(ordinal_loss(logits, scores).item())

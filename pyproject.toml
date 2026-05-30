@@ -10,27 +10,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "torch>=2.4",
-    "torchvision>=0.19",
-    "transformers>=5.0",
     "accelerate>=0.34",
     "pandas>=2.2",
     "pyarrow>=17",
     "numpy>=1.26",
     "scipy>=1.13",
-    "pillow>=10.4",
     "pydantic>=2",
-    "pydantic-settings>=2.4",
     "pyyaml>=6.0.2",
-    "python-dotenv>=1.0",
-    "tqdm>=4.66",
 ]
 
 [project.optional-dependencies]
-# Only needed by the Postgres example producer (scripts/export_manifest.py).
-# Other data sources don't need these. Install with: uv sync --extra postgres
-postgres = [
-    "sqlalchemy>=2.0",
-    "psycopg[binary]>=3.2",
+# Only needed by the pictoria SQLite adapter (scripts/export_manifest.py) to read
+# the vec0 embedding table. The training library itself needs none of this.
+export = [
+    "sqlite-vec>=0.1",
 ]
 
 [dependency-groups]
@@ -63,6 +56,7 @@ ignore = [
     "INP001",
     "PLR2004",
     "PLR0913",
+    "PLR0915",
     "N812",
     "COM812",
     "T201",
@@ -78,7 +72,7 @@ fixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
-"tests/*" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415"]
+"tests/*" = ["S101", "E402", "F401", "ANN", "PLR2004", "PLC0415", "PD008"]
 "scripts/*" = ["PLC0415", "EM101"]
 
 [tool.hatch.build.targets.wheel]
@@ -96,4 +90,3 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu132" }
-torchvision = { index = "pytorch-cu132" }
