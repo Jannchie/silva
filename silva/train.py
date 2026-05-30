@@ -100,7 +100,13 @@ def train(config_path: str) -> dict[str, float]:
         for batch in train_loader:
             with accelerator.accumulate(model):
                 out = model(batch["embedding"])
-                loss = silva_loss(out["logits"], batch["score"], pos_weight=pos_weight, ranking_weight=cfg.train.ranking_weight)
+                loss = silva_loss(
+                    out["logits"],
+                    batch["score"],
+                    pos_weight=pos_weight,
+                    ranking_weight=cfg.train.ranking_weight,
+                    soft_spearman_weight=cfg.train.soft_spearman_weight,
+                )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), cfg.train.max_grad_norm)

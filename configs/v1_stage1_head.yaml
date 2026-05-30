@@ -2,7 +2,7 @@
 model:
   embedding_dim: 1152  # SigLIP2-SO400M pooled feature width
   dropout: 0.1
-  hidden_dims: [512, 256]   # MLP trunk: lifts test Spearman 0.63 -> 0.71 (beats waifu 0.70)
+  hidden_dims: [1024, 512, 256]   # deeper trunk: single-model test Spearman 0.733 (5-seed ensemble 0.762)
 
 data:
   manifest_path: data/manifest.parquet
@@ -11,19 +11,20 @@ data:
 train:
   batch_size: 256
   grad_accum: 1
-  epochs: 24                 # converges ~epoch 18 (head-only ceiling, Spearman ~0.62)
-  lr_head: 3.0e-4
+  epochs: 40                 # deeper head needs longer; best calibration at 40 (sweep round 4-5)
+  lr_head: 1.5e-3            # retuned for the deeper trunk: 3e-4 under-trained it (val +0.008)
   weight_decay: 0.01
-  warmup_ratio: 0.03
+  warmup_ratio: 0.03         # scheduler *type* (onecycle/constant) was noise; lr is the lever
   max_grad_norm: 1.0
   use_pos_weight: true       # auto per-threshold class balancing
-  ranking_weight: 0.5        # pairwise ranking term: directly optimises Spearman (+0.01)
+  ranking_weight: 1.0        # pairwise ranking term: directly optimises Spearman
+  soft_spearman_weight: 0.5  # global soft-Spearman term: sharpens ranking + improves calibration (MAE/Pearson)
   mixed_precision: bf16      # "no" to train on CPU
   report_to: wandb           # needs `wandb login`; set "none" to disable
   project_name: silva
   run_name: null
   eval_every: 1
   early_stop_metric: spearman
-  early_stop_patience: 8
+  early_stop_patience: 40     # keep all 40 epochs; cosine lr makes the best val land late
   seed: 42
   output_dir: outputs/v1_stage1_head

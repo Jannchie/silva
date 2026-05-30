@@ -37,7 +37,7 @@ dev = [
 ]
 
 [tool.ruff]
-exclude = [".venv", "wandb", "outputs"]
+exclude = [".venv", "wandb", "outputs", "scripts/sweep.py"]  # sweep.py: throwaway experiment harness
 line-length = 160
 
 [tool.ruff.lint]

@@ -76,22 +76,64 @@ def pairwise_ranking_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.T
     return F.binary_cross_entropy_with_logits(ordered, torch.ones_like(ordered))
 
 
+def soft_spearman_loss(logits: torch.Tensor, scores: torch.Tensor, temp: float = 1.0) -> torch.Tensor:
+    """Differentiable Spearman surrogate: ``1 - corr(soft_rank(pred), target)``.
+
+    Spearman is non-differentiable because ranking is a hard sort. We relax the
+    rank of each item to ``sum_j sigmoid((pred_i - pred_j) / temp)`` — a smooth count
+    of how many items it outranks — then maximise its Pearson correlation with the
+    targets. Unlike :func:`pairwise_ranking_loss` (a per-pair AUC/Kendall surrogate),
+    this optimises the *global* rank correlation that the model is selected on.
+    Returns a graph-preserving zero when targets have no variance (no ranking signal).
+    """
+    pred = ordinal_score_from_logits(logits)
+    diff = pred.unsqueeze(1) - pred.unsqueeze(0)
+    soft_rank = torch.sigmoid(diff / temp).sum(dim=1)
+    target = scores.to(soft_rank.dtype)
+
+    a = soft_rank - soft_rank.mean()
+    b = target - target.mean()
+    denom = a.norm() * b.norm()
+    if denom < 1e-8:
+        return logits.sum() * 0.0
+    return 1.0 - (a * b).sum() / denom
+
+
+def listwise_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+    """ListNet top-one listwise loss: cross-entropy between the softmax score lists.
+
+    Treats the batch as one ranked list and matches the predicted top-one probability
+    distribution ``softmax(pred)`` to the target distribution ``softmax(target)``. A
+    listwise view complements the pairwise/global surrogates above. Targets are taken
+    as the raw 1~5 labels (a fixed monotone target distribution over the batch).
+    """
+    pred = ordinal_score_from_logits(logits)
+    target_p = torch.softmax(scores.to(pred.dtype), dim=0)
+    return -(target_p * torch.log_softmax(pred, dim=0)).sum()
+
+
 def silva_loss(
     logits: torch.Tensor,
     scores: torch.Tensor,
     pos_weight: torch.Tensor | None = None,
     ranking_weight: float = 0.0,
+    soft_spearman_weight: float = 0.0,
 ) -> torch.Tensor:
-    """Personal loss: ordinal BCE + optional ``pos_weight`` + optional ranking term.
+    """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman.
 
     No SmoothL1 regression: the personal 1~5 scale is deliberately non-equidistant
     (1=very bad … 5=very nice), so pulling toward equidistant integer labels would
     fight the ordinal head's self-adjusting thresholds. ``pos_weight`` (see
-    :func:`compute_pos_weight`) balances per-threshold imbalance; ``ranking_weight``
-    adds :func:`pairwise_ranking_loss` to directly optimise the Spearman objective.
+    :func:`compute_pos_weight`) balances per-threshold imbalance. Two ranking terms
+    sharpen the Spearman objective the model is selected on: ``ranking_weight`` adds
+    the pairwise :func:`pairwise_ranking_loss`, and ``soft_spearman_weight`` adds the
+    global :func:`soft_spearman_loss` (also markedly improves score calibration /
+    MAE). The tuned recipe is ``ranking_weight=1.0, soft_spearman_weight=0.5``.
     See design §3.3 / §5.
     """
     loss = ordinal_loss(logits, scores, pos_weight=pos_weight)
     if ranking_weight > 0:
         loss = loss + ranking_weight * pairwise_ranking_loss(logits, scores)
+    if soft_spearman_weight > 0:
+        loss = loss + soft_spearman_weight * soft_spearman_loss(logits, scores)
     return loss

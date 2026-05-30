@@ -83,7 +83,7 @@
 ```
 precomputed embedding[D]   （上游 SigLIP2-SO400M-384，由适配器产出）
   → LayerNorm + Dropout(0.1)
-  → MLP trunk（hidden_dims，如 512→256，GELU）   ← 把 test Spearman 0.63 抬到 0.71
+  → MLP trunk（hidden_dims，如 1024→512→256，GELU）   ← 把 test Spearman 0.63 抬到 0.73
   → 个人 ordinal head
 内部 ordinal 值：ordinal_score = 1 + Σ sigmoid(logit_k) ∈ [1, 5]   （标签/指标空间）
 规范输出：       score = (Σ sigmoid(logit_k)) / 4 ∈ [0, 1]          （见 §4.3）
@@ -97,7 +97,7 @@ precomputed embedding[D]   （上游 SigLIP2-SO400M-384，由适配器产出）
 
 ### 4.2 `aesthetic.py` — `EmbeddingAestheticModel`
 
-- `embedding[D] → LayerNorm → Dropout → [MLP trunk] → OrdinalHead`，**无 backbone、无 `transformers` 依赖**。`hidden_dims=[]` 是线性探针;非空(如 `[512,256]`,GELU)插入 MLP —— 实测把 test Spearman 从 0.63 抬到 **0.71**(超过现成 waifu 分 0.70)。证明 SigLIP2 embedding 的美学信息**够、但非线性**,瓶颈在 head 容量而非 embedding。
+- `embedding[D] → LayerNorm → Dropout → [MLP trunk] → OrdinalHead`，**无 backbone、无 `transformers` 依赖**。`hidden_dims=[]` 是线性探针;非空插入 MLP。实测把 test Spearman 从 `[]` 的 0.63 →`[512,256]` 0.71 →**`[1024,512,256]` 0.73**(均超现成 waifu 分 0.70)。证明 SigLIP2 embedding 的美学信息**够、但高度非线性**,瓶颈在 head 容量而非 embedding——加深/加宽 trunk 是最大单项杠杆。再深(`[1536,768]`、4 层)进入平台期，故定 `[1024,512,256]`。
 - 因 v1 冻结 backbone，embedding 是固定的，预计算进 manifest 即可：训练库只学 head，每 epoch 不必重跑 SO400M，模型也能在无预训练权重下单测。
 - `forward(embedding)` 返回 `{"logits", "score", "ordinal_score"}`。
 - backbone 的来源/一致性由适配器与推理端负责，训练库不关心（见 §3.1）。**注意**：将来给新图打分时，必须用产出这批 embedding 的同一个 backbone，否则分布不一致。
@@ -115,14 +115,20 @@ precomputed embedding[D]   （上游 SigLIP2-SO400M-384，由适配器产出）
 ## 5. 损失（`silva/losses.py`）
 
 ```
-L = ordinal_BCE(logits, ordinal_targets)      # 纯序数 BCE，无回归项
+L = ordinal_BCE(logits, targets; pos_weight)        # 序数 BCE（自动类别均衡）
+  + 1.0 * pairwise_ranking_loss(logits, scores)      # 成对排序（局部，Kendall 式）
+  + 0.5 * soft_spearman_loss(logits, scores)         # 全局软 Spearman（排序 + 校准）
 ```
+（无回归项；调好的配方 `ranking_weight=1.0, soft_spearman_weight=0.5`。）
 
 - `make_ordinal_targets(scores)`：`score∈{1..5}` → `[B,4]`，例 `5→[1,1,1,1]`、`3→[1,1,0,0]`、`1→[0,0,0,0]`。
 - `ordinal_loss`：`binary_cross_entropy_with_logits`。
 - **去掉 SmoothL1 回归项（原 `+ 0.2*SmoothL1(pred_score, personal_score)`）**：它把预测往等距整数标签拉，与 §3.3 的不等距语义冲突；且它主要改善 MAE/RMSE 这类**绝对误差**，而选模 / early-stop 按 **Spearman**（§6，排序优先于绝对误差），回归项对此无助益。`ordinal_score = 1+Σsigmoid` 的刻度仍由 BCE 钉住（拟合好时 sigmoid 饱和、自动逼近整数），去掉不丢刻度。
 - **自动 pos_weight（类别不平衡）**：`compute_pos_weight(train_scores)` 从 **train split** 算每个阈值的 `#neg/#pos`，平衡"score>k"各自的正负失衡（你的分布里 `>1` 约 70:1、`>4` 约 1:4.9、`>3` 近 1:1）。`config.train.use_pos_weight` 开关（默认开）；建议先跑不加权 baseline 再 A/B。
-- **pairwise ranking 项（`ranking_weight`）**：RankNet 式 logistic 排序损失，对每个 `score_i>score_j` 的对推 i 的连续分高于 j —— **直接优化选模指标 Spearman**（ordinal BCE 只间接优化）。在 MLP head 上再 +0.01 Spearman、top-5% 命中更高；`ranking_weight=0` 关闭。
+- **pairwise ranking 项（`ranking_weight`）**：RankNet 式 logistic 排序损失，对每个 `score_i>score_j` 的对推 i 的连续分高于 j —— **直接优化选模指标 Spearman**（ordinal BCE 只间接优化）。这是**局部**信号（逐对，近 Kendall）。实测 `ranking_weight=1.0` 优于 0.5；`=0` 关闭。
+- **soft-Spearman 项（`soft_spearman_weight`）**：`1 - corr(soft_rank(pred), target)`，用 `Σ_j sigmoid((pred_i-pred_j)/τ)` 把"硬排名"松弛为可导，优化**全局** rank 相关——正是选模指标本身。与 pairwise 互补：Spearman 持平，但**显著改善校准**（MAE 0.86→0.74、Pearson↑）。配 `0.5`；`=0` 关闭。目标无变化（全等分）时图保持、回零。
+- **listwise（ListNet）项**：已实现备选，实测伤 Spearman（虽 MAE 最低），**不采用**，留作工具。
+- **scheduler 类型无关**：onecycle / cosine_floor / constant 在同 lr 下与 cosine 全在噪声内（实验证实）；真正的杠杆是 **lr 随架构重调**（见 §6），不是调度器花样。
 - 预留 v2 多任务加权接口（外部 aux loss、`aux_weight`/`main_weight` 分歧加权），v1 路径不调用。
 
 ---
@@ -130,10 +136,25 @@ L = ordinal_BCE(logits, ordinal_targets)      # 纯序数 BCE，无回归项
 ## 6. 训练（`silva/train.py`）
 
 - accelerate 自定义循环；AdamW、**torch 原生 cosine+warmup**（`warmup_ratio=0.03`，无 transformers 依赖）、梯度裁剪。`mixed_precision` 可配（默认 `bf16`，CPU 测试用 `no`）。
-- **只训 head**：backbone 不在训练库，embedding 已预计算。`lr_head ~ 3e-4`，3~10 epoch。head 极小，batch 可大（默认 256）。
+- **只训 head**：backbone 不在训练库，embedding 已预计算。head 极小，batch 可大（默认 256）。
+- **lr 随架构重调（关键）**：浅 head 用 `3e-4`；换深 trunk `[1024,512,256]` 后 3e-4 欠训，**`lr_head=1.5e-3` + 40 epoch** 才充分收敛（val Spearman +0.008，best val 落在后段，故 `early_stop_patience` 放宽到 40 跑满）。这是上探的第二杠杆（仅次于加深架构）。
 - 启动时按 `use_pos_weight` 从 train split 算 `compute_pos_weight` 传入 loss（见 §5）。
 - 每个 eval 周期在 val 上算全部指标；**按 Spearman 存最优 checkpoint 并 early-stop**（排序能力优先于绝对误差）。
 - 配置：`configs/v1_stage1_head.yaml`。
+
+### 6.1 上探实验记录（test Spearman，选模按 val）
+
+| 阶段 | 配方 | test Spearman | 杠杆 |
+|---|---|---|---|
+| 原始 | 线性探针 + 纯 ordinal | 0.633 | — |
+| 旧最佳 | `[512,256]` + ranking0.5 | 0.716 | head 容量 |
+| **v1 当前** | `[1024,512,256]` + rw1.0 + ssp0.5 + lr1.5e-3/40ep | **0.733** | 加深 + lr 重调 + soft-Spearman |
+| （已探索，未采用） | 上者 × 5-seed 集成 | 0.762 | 方差消除 |
+
+- **有效**：加深 MLP（最大）＞ lr 重调 ＞ soft-Spearman（主要吃校准）＞ ranking 1.0。
+- **无效（实验排除）**：scheduler 类型、listwise 损失、超宽/超深架构（平台期）、lr=1e-4（欠训）。
+- **5-seed 集成**：稳定 +0.029（head 极小、backbone 只跑一次，推理近乎免费），但改变部署形态（评分时平均 N 个 head）。**v1 决定不落地**，保持单模型单 `best.pt`；留作后续可选增强（脚本/评估层即可实现，训练核心不必变）。
+- 实验 harness：`scripts/sweep.py`（一次性，embedding 全量入显存、head-only 批量对比；非生产、免 lint）。
 
 ---
 

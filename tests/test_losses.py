@@ -5,11 +5,13 @@ import torch
 
 from silva.losses import (
     compute_pos_weight,
+    listwise_loss,
     make_ordinal_targets,
     ordinal_loss,
     ordinal_score_from_logits,
     pairwise_ranking_loss,
     silva_loss,
+    soft_spearman_loss,
     unit_score_from_logits,
 )
 
@@ -98,3 +100,63 @@ def test_pairwise_ranking_loss_zero_when_all_scores_equal():
     loss = pairwise_ranking_loss(logits, torch.tensor([3, 3, 3]))
     assert loss.item() == pytest.approx(0.0)
     loss.backward()  # must not error
+
+
+def test_soft_spearman_loss_lower_when_ordered():
+    scores = torch.tensor([1, 2, 3, 4, 5])
+    ordered = torch.tensor(  # ordinal scores roughly increase with the targets
+        [[-9.0, -9, -9, -9], [-3.0, -3, -3, -3], [0.0, 0, 0, 0], [3.0, 3, 3, 3], [9.0, 9, 9, 9]]
+    )
+    reversed_ = torch.flip(ordered, dims=[0])  # ordinal scores decrease -> anti-correlated
+    assert soft_spearman_loss(ordered, scores).item() < soft_spearman_loss(reversed_, scores).item()
+
+
+def test_soft_spearman_loss_near_zero_for_perfect_ranking():
+    # monotone increasing predictions vs increasing targets -> correlation ~1 -> loss ~0
+    scores = torch.tensor([1, 2, 3, 4, 5])
+    perfect = torch.tensor([[-12.0] * 4, [-6.0] * 4, [0.0] * 4, [6.0] * 4, [12.0] * 4])
+    assert soft_spearman_loss(perfect, scores).item() == pytest.approx(0.0, abs=0.1)
+
+
+def test_soft_spearman_loss_zero_when_all_scores_equal():
+    # zero target variance -> correlation undefined -> graph-preserving zero
+    logits = torch.randn(4, 4, requires_grad=True)
+    loss = soft_spearman_loss(logits, torch.tensor([3, 3, 3, 3]))
+    assert loss.item() == pytest.approx(0.0)
+    loss.backward()  # must not error
+
+
+def test_listwise_loss_lower_when_ordered():
+    scores = torch.tensor([1, 2, 3, 4, 5])
+    ordered = torch.tensor(
+        [[-9.0, -9, -9, -9], [-3.0, -3, -3, -3], [0.0, 0, 0, 0], [3.0, 3, 3, 3], [9.0, 9, 9, 9]]
+    )
+    reversed_ = torch.flip(ordered, dims=[0])
+    assert listwise_loss(ordered, scores).item() < listwise_loss(reversed_, scores).item()
+
+
+def test_listwise_loss_keeps_graph():
+    logits = torch.randn(5, 4, requires_grad=True)
+    loss = listwise_loss(logits, torch.tensor([1, 2, 3, 4, 5]))
+    loss.backward()  # must not error
+    assert logits.grad is not None
+
+
+def test_silva_loss_combines_ranking_and_soft_spearman_terms():
+    # the winning recipe: ordinal BCE + 1.0*ranking + 0.5*soft_spearman
+    logits = torch.randn(8, 4)
+    scores = torch.tensor([1, 2, 3, 4, 5, 1, 3, 5])
+    combined = silva_loss(logits, scores, ranking_weight=1.0, soft_spearman_weight=0.5)
+    expected = (
+        ordinal_loss(logits, scores)
+        + 1.0 * pairwise_ranking_loss(logits, scores)
+        + 0.5 * soft_spearman_loss(logits, scores)
+    )
+    assert combined.item() == pytest.approx(expected.item(), abs=1e-5)
+
+
+def test_silva_loss_soft_spearman_weight_zero_is_noop():
+    logits = torch.randn(6, 4)
+    scores = torch.tensor([1, 2, 3, 4, 5, 2])
+    base = silva_loss(logits, scores, ranking_weight=1.0)
+    assert silva_loss(logits, scores, ranking_weight=1.0, soft_spearman_weight=0.0).item() == pytest.approx(base.item())

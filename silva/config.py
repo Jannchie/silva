@@ -29,6 +29,7 @@ class TrainConfig(BaseModel):
     max_grad_norm: float = 1.0
     use_pos_weight: bool = True  # auto per-threshold class balancing (compute_pos_weight)
     ranking_weight: float = 0.0  # weight on pairwise ranking loss (directly optimises Spearman)
+    soft_spearman_weight: float = 0.0  # weight on global soft-Spearman loss (ranking + calibration)
     mixed_precision: str = "bf16"  # accelerate mixed precision; "no" for CPU
     report_to: str = "none"        # "wandb" to log to Weights & Biases, "none" to disable
     project_name: str = "silva"
