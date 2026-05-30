@@ -1,3 +1,12 @@
+## v0.1.1
+
+[v0.1.0...v0.1.1](https://github.com/Jannchie/silva/compare/v0.1.0...v0.1.1)
+
+### :construction_worker: CI
+
+- force JS actions onto Node 24 (silence Node 20 deprecation) - By [Jianqi Pan](mailto:jannchie@gmail.com) in [caaff2c](https://github.com/Jannchie/silva/commit/caaff2c)
+- trigger PyPI publish on version tags (v*) + manual dispatch - By [Jianqi Pan](mailto:jannchie@gmail.com) in [240bfab](https://github.com/Jannchie/silva/commit/240bfab)
+
 ## v0.1.0
 
 [v0.1.0...v0.1.0](https://github.com/Jannchie/silva/compare/v0.1.0...v0.1.0)
