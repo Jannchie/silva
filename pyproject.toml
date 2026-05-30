@@ -25,6 +25,10 @@ dependencies = [
 export = [
     "sqlite-vec>=0.1",
 ]
+# Optional experiment tracking (silva.train report_to: wandb). Run `wandb login` first.
+wandb = [
+    "wandb>=0.17",
+]
 
 [dependency-groups]
 dev = [
@@ -33,7 +37,7 @@ dev = [
 ]
 
 [tool.ruff]
-exclude = [".venv"]
+exclude = [".venv", "wandb", "outputs"]
 line-length = 160
 
 [tool.ruff.lint]
@@ -55,6 +59,8 @@ ignore = [
     "FAST002",
     "INP001",
     "PLR2004",
+    "C901",
+    "PLR0912",
     "PLR0913",
     "PLR0915",
     "N812",

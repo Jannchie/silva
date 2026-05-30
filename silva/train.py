@@ -51,14 +51,21 @@ def run_eval(model: torch.nn.Module, loader: DataLoader, accelerator: Accelerato
 def train(config_path: str) -> dict[str, float]:
     cfg = Config.from_yaml(config_path)
     set_seed(cfg.train.seed)
-    accelerator = Accelerator(mixed_precision=cfg.train.mixed_precision, gradient_accumulation_steps=cfg.train.grad_accum)
+    log_with = cfg.train.report_to if cfg.train.report_to != "none" else None
+    accelerator = Accelerator(
+        mixed_precision=cfg.train.mixed_precision,
+        gradient_accumulation_steps=cfg.train.grad_accum,
+        log_with=log_with,
+    )
 
     train_ds = AestheticDataset(cfg.data.manifest_path, "train")
     val_ds = AestheticDataset(cfg.data.manifest_path, "val")
     train_loader = DataLoader(train_ds, batch_size=cfg.train.batch_size, shuffle=True, num_workers=cfg.data.num_workers, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.train.batch_size, shuffle=False, num_workers=cfg.data.num_workers)
 
-    model = EmbeddingAestheticModel(embedding_dim=cfg.model.embedding_dim, dropout=cfg.model.dropout)
+    model = EmbeddingAestheticModel(
+        embedding_dim=cfg.model.embedding_dim, dropout=cfg.model.dropout, hidden_dims=cfg.model.hidden_dims
+    )
     optimizer = AdamW(model.parameters(), lr=cfg.train.lr_head, weight_decay=cfg.train.weight_decay)
 
     steps_per_epoch = math.ceil(len(train_loader) / cfg.train.grad_accum)
@@ -75,24 +82,34 @@ def train(config_path: str) -> dict[str, float]:
         model, optimizer, train_loader, val_loader, scheduler
     )
 
+    if log_with:
+        flat_config = {f"{section}.{k}": v for section, values in cfg.model_dump().items() for k, v in values.items()}
+        accelerator.init_trackers(cfg.train.project_name, config=flat_config, init_kwargs={"wandb": {"name": cfg.train.run_name}})
+        if pos_weight is not None:
+            accelerator.log({f"pos_weight/>{i + 1}": w for i, w in enumerate(pos_weight.tolist())}, step=0)
+
     output_dir = Path(cfg.train.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     best_metric = -math.inf
     best_metrics: dict[str, float] = {}
     patience = 0
 
+    global_step = 0
     for epoch in range(cfg.train.epochs):
         model.train()
         for batch in train_loader:
             with accelerator.accumulate(model):
                 out = model(batch["embedding"])
-                loss = silva_loss(out["logits"], batch["score"], pos_weight=pos_weight)
+                loss = silva_loss(out["logits"], batch["score"], pos_weight=pos_weight, ranking_weight=cfg.train.ranking_weight)
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), cfg.train.max_grad_norm)
                 optimizer.step()
                 if accelerator.sync_gradients:
                     scheduler.step()
+                    global_step += 1
+                    if log_with:
+                        accelerator.log({"train/loss": loss.item(), "train/lr": scheduler.get_last_lr()[0]}, step=global_step)
                 optimizer.zero_grad()
 
         if (epoch + 1) % cfg.train.eval_every != 0:
@@ -100,6 +117,8 @@ def train(config_path: str) -> dict[str, float]:
 
         metrics = run_eval(model, val_loader, accelerator)
         accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
+        if log_with:
+            accelerator.log({f"val/{k}": v for k, v in metrics.items()}, step=global_step)
 
         current = metrics[cfg.train.early_stop_metric]
         if is_improvement(current, best_metric):
@@ -118,6 +137,8 @@ def train(config_path: str) -> dict[str, float]:
                 accelerator.print(f"early stopping at epoch {epoch + 1}")
                 break
 
+    if log_with:
+        accelerator.end_training()
     return best_metrics
 
 

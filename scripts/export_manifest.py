@@ -36,9 +36,22 @@ JOIN post_vectors_siglip2 v ON v.post_id = p.id
 WHERE p.score > 0
 """
 
+QUERY_PER_SCORE = """
+SELECT p.id, v.embedding, p.score
+FROM posts p
+JOIN post_vectors_siglip2 v ON v.post_id = p.id
+WHERE p.score = ?
+ORDER BY p.id
+LIMIT ?
+"""
 
-def fetch_records(db_path: str) -> Iterator[tuple[int, list[float], int]]:
-    """Yield ``(post_id, embedding, score)`` from the pictoria SQLite DB (score>0 only)."""
+
+def fetch_records(db_path: str, per_score_limit: int | None = None) -> Iterator[tuple[int, list[float], int]]:
+    """Yield ``(post_id, embedding, score)`` from the pictoria SQLite DB (score>0 only).
+
+    ``per_score_limit`` caps rows per score (1..5) — handy for a small balanced
+    debug set to exercise the training loop on real embeddings.
+    """
     import sqlite_vec  # lazy: only the adapter needs the vec0 extension
 
     con = sqlite3.connect(db_path)
@@ -46,9 +59,15 @@ def fetch_records(db_path: str) -> Iterator[tuple[int, list[float], int]]:
         con.enable_load_extension(True)
         sqlite_vec.load(con)
         con.enable_load_extension(False)
-        for post_id, embedding_blob, score in con.execute(QUERY):
-            embedding = np.frombuffer(embedding_blob, dtype=np.float32).tolist()
-            yield post_id, embedding, score
+        queries = (
+            [(QUERY, ())]
+            if per_score_limit is None
+            else [(QUERY_PER_SCORE, (s, per_score_limit)) for s in range(1, 6)]
+        )
+        for sql, params in queries:
+            for post_id, embedding_blob, score in con.execute(sql, params):
+                embedding = np.frombuffer(embedding_blob, dtype=np.float32).tolist()
+                yield post_id, embedding, score
     finally:
         con.close()
 
@@ -58,12 +77,13 @@ def main() -> None:
     parser.add_argument("--db", default=DEFAULT_DB, help="path to pictoria.sqlite")
     parser.add_argument("--output", default="data/manifest.parquet")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--per-score-limit", type=int, default=None, help="cap rows per score (1..5) for a small balanced debug set")
     args = parser.parse_args()
 
     post_ids: list[int] = []
     embeddings: list[list[float]] = []
     scores: list[int] = []
-    for post_id, embedding, score in fetch_records(args.db):
+    for post_id, embedding, score in fetch_records(args.db, args.per_score_limit):
         post_ids.append(post_id)
         embeddings.append(embedding)
         scores.append(score)

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 class ModelConfig(BaseModel):
     embedding_dim: int = 1152  # SigLIP2-SO400M pooled feature width
     dropout: float = 0.1
+    hidden_dims: list[int] = Field(default_factory=list)  # MLP trunk before head; [] = linear probe
 
 
 class DataConfig(BaseModel):
@@ -27,7 +28,11 @@ class TrainConfig(BaseModel):
     warmup_ratio: float = 0.03
     max_grad_norm: float = 1.0
     use_pos_weight: bool = True  # auto per-threshold class balancing (compute_pos_weight)
+    ranking_weight: float = 0.0  # weight on pairwise ranking loss (directly optimises Spearman)
     mixed_precision: str = "bf16"  # accelerate mixed precision; "no" for CPU
+    report_to: str = "none"        # "wandb" to log to Weights & Biases, "none" to disable
+    project_name: str = "silva"
+    run_name: str | None = None
     eval_every: int = 1
     early_stop_metric: str = "spearman"
     early_stop_patience: int = 3

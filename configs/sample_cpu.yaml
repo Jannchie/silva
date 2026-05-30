@@ -1,0 +1,24 @@
+# Debug config: balanced 100-per-score sample, CPU, for exercising the pipeline.
+model:
+  embedding_dim: 1152
+  dropout: 0.1
+
+data:
+  manifest_path: data/manifest_sample.parquet
+  num_workers: 0          # Windows: avoid dataloader worker spawn issues
+
+train:
+  batch_size: 64
+  grad_accum: 1
+  epochs: 10
+  lr_head: 3.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  max_grad_norm: 1.0
+  use_pos_weight: true
+  mixed_precision: "no"   # CPU
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 5
+  seed: 42
+  output_dir: outputs/sample_cpu

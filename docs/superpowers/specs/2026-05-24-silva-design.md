@@ -83,6 +83,7 @@
 ```
 precomputed embedding[D]   （上游 SigLIP2-SO400M-384，由适配器产出）
   → LayerNorm + Dropout(0.1)
+  → MLP trunk（hidden_dims，如 512→256，GELU）   ← 把 test Spearman 0.63 抬到 0.71
   → 个人 ordinal head
 内部 ordinal 值：ordinal_score = 1 + Σ sigmoid(logit_k) ∈ [1, 5]   （标签/指标空间）
 规范输出：       score = (Σ sigmoid(logit_k)) / 4 ∈ [0, 1]          （见 §4.3）
@@ -96,7 +97,7 @@ precomputed embedding[D]   （上游 SigLIP2-SO400M-384，由适配器产出）
 
 ### 4.2 `aesthetic.py` — `EmbeddingAestheticModel`
 
-- `embedding[D] → LayerNorm → Dropout → OrdinalHead`，**无 backbone、无 `transformers` 依赖**。
+- `embedding[D] → LayerNorm → Dropout → [MLP trunk] → OrdinalHead`，**无 backbone、无 `transformers` 依赖**。`hidden_dims=[]` 是线性探针;非空(如 `[512,256]`,GELU)插入 MLP —— 实测把 test Spearman 从 0.63 抬到 **0.71**(超过现成 waifu 分 0.70)。证明 SigLIP2 embedding 的美学信息**够、但非线性**,瓶颈在 head 容量而非 embedding。
 - 因 v1 冻结 backbone，embedding 是固定的，预计算进 manifest 即可：训练库只学 head，每 epoch 不必重跑 SO400M，模型也能在无预训练权重下单测。
 - `forward(embedding)` 返回 `{"logits", "score", "ordinal_score"}`。
 - backbone 的来源/一致性由适配器与推理端负责，训练库不关心（见 §3.1）。**注意**：将来给新图打分时，必须用产出这批 embedding 的同一个 backbone，否则分布不一致。
@@ -121,6 +122,7 @@ L = ordinal_BCE(logits, ordinal_targets)      # 纯序数 BCE，无回归项
 - `ordinal_loss`：`binary_cross_entropy_with_logits`。
 - **去掉 SmoothL1 回归项（原 `+ 0.2*SmoothL1(pred_score, personal_score)`）**：它把预测往等距整数标签拉，与 §3.3 的不等距语义冲突；且它主要改善 MAE/RMSE 这类**绝对误差**，而选模 / early-stop 按 **Spearman**（§6，排序优先于绝对误差），回归项对此无助益。`ordinal_score = 1+Σsigmoid` 的刻度仍由 BCE 钉住（拟合好时 sigmoid 饱和、自动逼近整数），去掉不丢刻度。
 - **自动 pos_weight（类别不平衡）**：`compute_pos_weight(train_scores)` 从 **train split** 算每个阈值的 `#neg/#pos`，平衡"score>k"各自的正负失衡（你的分布里 `>1` 约 70:1、`>4` 约 1:4.9、`>3` 近 1:1）。`config.train.use_pos_weight` 开关（默认开）；建议先跑不加权 baseline 再 A/B。
+- **pairwise ranking 项（`ranking_weight`）**：RankNet 式 logistic 排序损失，对每个 `score_i>score_j` 的对推 i 的连续分高于 j —— **直接优化选模指标 Spearman**（ordinal BCE 只间接优化）。在 MLP head 上再 +0.01 Spearman、top-5% 命中更高；`ranking_weight=0` 关闭。
 - 预留 v2 多任务加权接口（外部 aux loss、`aux_weight`/`main_weight` 分歧加权），v1 路径不调用。
 
 ---

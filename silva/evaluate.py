@@ -20,13 +20,14 @@ def evaluate(
     split: str,
     embedding_dim: int,
     dropout: float = 0.1,
+    hidden_dims: list[int] | None = None,
     batch_size: int = 256,
     num_workers: int = 4,
 ) -> dict[str, float]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
 
-    model = EmbeddingAestheticModel(embedding_dim=embedding_dim, dropout=dropout)
+    model = EmbeddingAestheticModel(embedding_dim=embedding_dim, dropout=dropout, hidden_dims=hidden_dims)
     model.load_state_dict(ckpt["model"])
     model.to(device).eval()
 
@@ -55,6 +56,7 @@ def main() -> None:
         args.split,
         cfg.model.embedding_dim,
         cfg.model.dropout,
+        cfg.model.hidden_dims,
         cfg.train.batch_size,
         cfg.data.num_workers,
     )

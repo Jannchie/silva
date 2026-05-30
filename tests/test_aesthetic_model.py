@@ -22,3 +22,18 @@ def test_no_backbone_no_transformers_dependency():
     # The model must be constructible with no pretrained weights / no network.
     model = EmbeddingAestheticModel(embedding_dim=4)
     assert not hasattr(model, "vision")
+
+
+def test_mlp_head_adds_capacity_and_keeps_output_shape():
+    linear = EmbeddingAestheticModel(embedding_dim=16, hidden_dims=[])
+    mlp = EmbeddingAestheticModel(embedding_dim=16, hidden_dims=[32, 16])
+    assert sum(p.numel() for p in mlp.parameters()) > sum(p.numel() for p in linear.parameters())
+    out = mlp(torch.randn(4, 16))
+    assert out["logits"].shape == (4, 4)
+    assert out["ordinal_score"].shape == (4,)
+
+
+def test_empty_hidden_dims_is_pure_linear_probe():
+    # hidden_dims=[] must reproduce the original LayerNorm+Linear head exactly (no trunk).
+    model = EmbeddingAestheticModel(embedding_dim=8, hidden_dims=[])
+    assert not any(isinstance(m, torch.nn.GELU) for m in model.modules())

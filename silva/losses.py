@@ -58,16 +58,40 @@ def ordinal_score_from_logits(logits: torch.Tensor) -> torch.Tensor:
     return 1.0 + torch.sigmoid(logits).sum(dim=-1)
 
 
-def silva_loss(
-    logits: torch.Tensor, scores: torch.Tensor, pos_weight: torch.Tensor | None = None
-) -> torch.Tensor:
-    """v1 personal loss: pure ordinal BCE, with optional per-threshold ``pos_weight``.
+def pairwise_ranking_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+    """RankNet-style pairwise logistic loss — directly optimises ranking (Spearman).
 
-    No regression term: the personal 1~5 scale is deliberately non-equidistant
-    (1=very bad, 2=bad, 3=ok-but-not-good, 4=nice, 5=very nice), so a SmoothL1
-    pull toward equidistant integer labels would fight the ordinal head's
-    self-adjusting thresholds. Model selection is by Spearman (ranking), which a
-    regression term does not help. ``pos_weight`` (see :func:`compute_pos_weight`)
-    balances the per-threshold class imbalance. See design §3.3 / §5 for rationale.
+    For every ordered pair (i, j) with ``score_i > score_j``, pushes i's continuous
+    ``ordinal_score`` above j's. This aligns training with the Spearman selection
+    metric, which ordinal BCE only optimises indirectly. Returns a graph-preserving
+    zero when the batch has no ordered pairs (all scores equal).
     """
-    return ordinal_loss(logits, scores, pos_weight=pos_weight)
+    rank = ordinal_score_from_logits(logits)
+    diff_rank = rank.unsqueeze(1) - rank.unsqueeze(0)
+    diff_score = scores.unsqueeze(1) - scores.unsqueeze(0)
+    mask = diff_score > 0
+    if not mask.any():
+        return logits.sum() * 0.0
+    ordered = diff_rank[mask]
+    return F.binary_cross_entropy_with_logits(ordered, torch.ones_like(ordered))
+
+
+def silva_loss(
+    logits: torch.Tensor,
+    scores: torch.Tensor,
+    pos_weight: torch.Tensor | None = None,
+    ranking_weight: float = 0.0,
+) -> torch.Tensor:
+    """Personal loss: ordinal BCE + optional ``pos_weight`` + optional ranking term.
+
+    No SmoothL1 regression: the personal 1~5 scale is deliberately non-equidistant
+    (1=very bad … 5=very nice), so pulling toward equidistant integer labels would
+    fight the ordinal head's self-adjusting thresholds. ``pos_weight`` (see
+    :func:`compute_pos_weight`) balances per-threshold imbalance; ``ranking_weight``
+    adds :func:`pairwise_ranking_loss` to directly optimise the Spearman objective.
+    See design §3.3 / §5.
+    """
+    loss = ordinal_loss(logits, scores, pos_weight=pos_weight)
+    if ranking_weight > 0:
+        loss = loss + ranking_weight * pairwise_ranking_loss(logits, scores)
+    return loss

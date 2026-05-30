@@ -8,6 +8,7 @@ from silva.losses import (
     make_ordinal_targets,
     ordinal_loss,
     ordinal_score_from_logits,
+    pairwise_ranking_loss,
     silva_loss,
     unit_score_from_logits,
 )
@@ -82,3 +83,18 @@ def test_ordinal_loss_pos_weight_changes_loss():
     logits, scores = torch.zeros(2, 4), torch.tensor([3, 3])
     weighted = ordinal_loss(logits, scores, pos_weight=torch.full((4,), 2.0)).item()
     assert weighted != pytest.approx(ordinal_loss(logits, scores).item())
+
+
+def test_pairwise_ranking_loss_lower_when_ordered():
+    scores = torch.tensor([1, 3, 5])
+    ordered = torch.tensor([[-9.0, -9, -9, -9], [0.0, 0, 0, 0], [9.0, 9, 9, 9]])  # ordinal ~1,3,5
+    reversed_ = torch.flip(ordered, dims=[0])  # ordinal ~5,3,1 vs scores 1,3,5
+    assert pairwise_ranking_loss(ordered, scores).item() < pairwise_ranking_loss(reversed_, scores).item()
+
+
+def test_pairwise_ranking_loss_zero_when_all_scores_equal():
+    # no ordered pairs -> no ranking signal -> exactly zero (and must keep the graph)
+    logits = torch.randn(3, 4, requires_grad=True)
+    loss = pairwise_ranking_loss(logits, torch.tensor([3, 3, 3]))
+    assert loss.item() == pytest.approx(0.0)
+    loss.backward()  # must not error
