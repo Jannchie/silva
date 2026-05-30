@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from silva.data.manifest import write_manifest
+from silva_train.data.manifest import write_manifest
 
 
 def test_training_closed_loop(tmp_path):
-    from silva.train import train
+    from silva_train.train import train
 
     rng = np.random.default_rng(0)
     rows = []

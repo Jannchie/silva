@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 
-from silva.data.dataset import AestheticDataset
+from silva_train.data.dataset import AestheticDataset
 
 
 def _manifest(tmp_path, rows) -> str:

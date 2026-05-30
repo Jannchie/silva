@@ -14,11 +14,12 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
-from silva.config import Config
-from silva.data.dataset import AestheticDataset
-from silva.losses import compute_pos_weight, silva_loss
-from silva.metrics import compute_metrics, is_improvement
 from silva.models.aesthetic import EmbeddingAestheticModel
+
+from silva_train.config import Config
+from silva_train.data.dataset import AestheticDataset
+from silva_train.losses import compute_pos_weight, silva_loss
+from silva_train.metrics import compute_metrics, is_improvement
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("silva.train")

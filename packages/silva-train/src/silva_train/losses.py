@@ -9,8 +9,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-# 5 ordinal levels (scores 1..5) -> 4 binary "score > k" thresholds.
-NUM_THRESHOLDS = 4
+from silva.scoring import NUM_THRESHOLDS, ordinal_score_from_logits
 
 
 def make_ordinal_targets(scores: torch.Tensor) -> torch.Tensor:
@@ -46,16 +45,6 @@ def compute_pos_weight(scores: torch.Tensor) -> torch.Tensor:
     pos = (scores.unsqueeze(1) > thresholds.unsqueeze(0)).sum(dim=0).float()
     neg = scores.shape[0] - pos
     return neg / pos
-
-
-def unit_score_from_logits(logits: torch.Tensor) -> torch.Tensor:
-    """Canonical output in ``[0, 1]``: the mean of the 4 threshold probabilities."""
-    return torch.sigmoid(logits).mean(dim=-1)
-
-
-def ordinal_score_from_logits(logits: torch.Tensor) -> torch.Tensor:
-    """Label-space score in ``[1, 5]`` used for the regression term and readable metrics."""
-    return 1.0 + torch.sigmoid(logits).sum(dim=-1)
 
 
 def pairwise_ranking_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:

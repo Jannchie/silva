@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from silva.data.manifest import build_manifest, validate_manifest, write_manifest
+from silva_train.data.manifest import build_manifest, validate_manifest, write_manifest
 
 
 def _valid_df() -> pd.DataFrame:

@@ -7,10 +7,11 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
-from silva.config import Config
-from silva.data.dataset import AestheticDataset
-from silva.metrics import compute_metrics
 from silva.models.aesthetic import EmbeddingAestheticModel
+
+from silva_train.config import Config
+from silva_train.data.dataset import AestheticDataset
+from silva_train.metrics import compute_metrics
 
 
 @torch.no_grad()

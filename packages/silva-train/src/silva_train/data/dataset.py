@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from silva.data.manifest import validate_manifest
+from silva_train.data.manifest import validate_manifest
 
 
 class AestheticDataset(Dataset):

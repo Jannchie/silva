@@ -1,6 +1,6 @@
 import math
 
-from silva.metrics import (
+from silva_train.metrics import (
     compute_metrics,
     is_improvement,
     mae,

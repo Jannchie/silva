@@ -1,6 +1,6 @@
 from collections import Counter
 
-from silva.data.manifest import assign_splits
+from silva_train.data.manifest import assign_splits
 
 
 def test_same_path_gets_same_split():
