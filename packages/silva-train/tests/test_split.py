@@ -33,19 +33,10 @@ def test_existing_key_keeps_split_when_new_keys_added():
 
     This is the property the old permutation-based split lacked — adding rows reshuffled
     everyone, leaking past test rows into train. A per-key deterministic hash fixes it.
+    With content-keyed splits this stability is intrinsic: no prior-split map needed.
     """
     before = assign_splits([str(i) for i in range(500)], seed=42)
     before_map = {str(i): s for i, s in enumerate(before)}
     after = assign_splits([str(i) for i in range(1000)], seed=42)
     for i in range(500):
         assert after[i] == before_map[str(i)], f"key {i} moved split when the set grew"
-
-
-def test_existing_assignments_are_carried_over():
-    """An explicit existing map pins keys to their prior split regardless of the hash."""
-    keys = [str(i) for i in range(50)]
-    existing = {"0": "test", "1": "test", "2": "val"}
-    by_key = dict(zip(keys, assign_splits(keys, seed=42, existing=existing), strict=True))
-    assert by_key["0"] == "test"
-    assert by_key["1"] == "test"
-    assert by_key["2"] == "val"

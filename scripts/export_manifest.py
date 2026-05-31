@@ -80,14 +80,14 @@ def main() -> None:
     parser.add_argument("--output", default="data/manifest.parquet")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--per-score-limit", type=int, default=None, help="cap rows per score (1..5) for a small balanced debug set")
-    parser.add_argument("--previous", default=None, help="prior manifest to freeze splits from + diff against; defaults to --output if it already exists")
+    parser.add_argument("--previous", default=None, help="prior manifest to diff against; defaults to --output if it already exists")
     args = parser.parse_args()
 
-    # incremental update: carry over splits from the prior manifest so existing posts never
-    # move across train/val/test, and diff against it to report what this refresh changed.
+    # splits are content-keyed (by embedding), so a re-export is leakage-free on its own —
+    # no need to carry over a prior split map. We still read the previous manifest, but only
+    # to diff against it and report what this refresh changed.
     prev_path = Path(args.previous) if args.previous else Path(args.output)
     old_df = pd.read_parquet(prev_path) if prev_path.exists() else None
-    existing = {int(pid): str(sp) for pid, sp in zip(old_df["post_id"], old_df["split"], strict=True)} if old_df is not None else None
 
     post_ids: list[int] = []
     embeddings: list[list[float]] = []
@@ -97,7 +97,7 @@ def main() -> None:
         embeddings.append(embedding)
         scores.append(score)
 
-    df = build_manifest(post_ids, embeddings, scores, seed=args.seed, existing=existing)
+    df = build_manifest(embeddings, scores, post_ids=post_ids, seed=args.seed)
     out = write_manifest(df, args.output)
     print(f"Wrote {len(df)} rows to {out}")
     print(df["split"].value_counts().to_string())
@@ -106,7 +106,7 @@ def main() -> None:
     if old_df is not None:
         d = diff_manifests(old_df, df)
         print(f"\n=== update vs {prev_path.name} ===")
-        print(f"added: {d['n_added']}  removed: {d['n_removed']}  rescored: {d['n_rescored']}  (carried-over splits: {len(existing)})")
+        print(f"added: {d['n_added']}  removed: {d['n_removed']}  rescored: {d['n_rescored']}  (splits content-keyed: stable across re-export)")
         if d["n_rescored"]:
             preview = ", ".join(f"#{p}:{a}->{b}" for p, a, b in d["rescored"][:10])
             print(f"  rescored e.g. {preview}{' ...' if d['n_rescored'] > 10 else ''}")

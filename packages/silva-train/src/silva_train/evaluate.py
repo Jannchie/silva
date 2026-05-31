@@ -18,7 +18,7 @@ from silva_train.metrics import compute_metrics
 @torch.no_grad()
 def evaluate(
     checkpoint: str,
-    manifest_path: str,
+    manifest_path: str | list[str],
     split: str,
     embedding_dim: int,
     dropout: float = 0.1,

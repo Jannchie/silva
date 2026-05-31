@@ -35,15 +35,16 @@ from silva_train.model_card import render_model_card
 BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)
 
 
-def fit_calibration(model: EmbeddingAestheticModel, manifest: str) -> list[float]:
+def fit_calibration(model: EmbeddingAestheticModel, manifests: list[str]) -> list[float]:
     """Bake the calibration LUT into ``model`` from the manifest latents + label distribution.
 
     The published per-image model then emits the same calibrated score the batch library
-    writer does: target = the manifest's 1~5 label frequencies, source = the model's latents.
+    writer does: target = the (merged) manifests' 1~5 label frequencies, source = the model's
+    latents. Accepts several parquets so calibration matches a multi-source training set.
     """
     import pandas as pd
 
-    df = pd.read_parquet(manifest, columns=["personal_score", "embedding"])
+    df = pd.concat([pd.read_parquet(m, columns=["personal_score", "embedding"]) for m in manifests], ignore_index=True)
     x = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32)
     with torch.no_grad():
         feat = model.trunk(model.norm(x))
@@ -58,7 +59,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Push the SILVA aesthetic head to the Hugging Face Hub.")
     parser.add_argument("--checkpoint", default="outputs/v1_stage1_head", help="run dir (or its best.safetensors)")
     parser.add_argument("--repo-id", required=True, help="target repo, e.g. <user>/silva-aesthetic")
-    parser.add_argument("--manifest", default=None, help="manifest for test-split eval + calibration (default: the one in the checkpoint config)")
+    parser.add_argument("--manifest", nargs="+", default=None, help="manifest(s) for eval + calibration (default: from the checkpoint config)")
     parser.add_argument("--private", action="store_true", help="create the repo as private")
     parser.add_argument("--dry-run", action="store_true", help="write repo files to ./hub_export/ instead of uploading")
     parser.add_argument("--commit-message", default="Upload SILVA aesthetic head")
@@ -77,21 +78,24 @@ def main() -> None:
 
     # The checkpoint's stored metrics are the *val* best; the card reports the held-out
     # *test* split, so re-evaluate on test when the manifest is available — and bake the
-    # calibration LUT from the same manifest.
-    manifest = args.manifest or config["data"]["manifest_path"]
-    if Path(manifest).exists():
+    # calibration LUT from the same manifest(s). manifest_path may be a single parquet or a
+    # list (multi-source training); normalise to a list so eval/calibration see the same data.
+    manifests = args.manifest or config["data"]["manifest_path"]
+    manifests = [manifests] if isinstance(manifests, str) else list(manifests)
+    if all(Path(m).exists() for m in manifests):
         from silva_train.evaluate import evaluate
 
         metrics = evaluate(
-            args.checkpoint, manifest, "test",
+            args.checkpoint, manifests, "test",
             model_cfg["embedding_dim"], model_cfg.get("dropout", 0.1), model_cfg.get("hidden_dims", []),
         )
-        print(f"evaluated on test split of {manifest}: spearman={metrics.get('spearman'):.4f}")
-        target = fit_calibration(model, manifest)
+        print(f"evaluated on test split of {manifests}: spearman={metrics.get('spearman'):.4f}")
+        target = fit_calibration(model, manifests)
         tnorm = [round(t / sum(target), 3) for t in target]
         print(f"baked calibration LUT ({N_CAL_KNOTS} knots) to label distribution {tnorm}")
     else:
-        print(f"WARNING: manifest {manifest} not found — VAL metrics on the card, and NO calibration baked (model emits raw score).")
+        missing = [m for m in manifests if not Path(m).exists()]
+        print(f"WARNING: manifest(s) {missing} not found — VAL metrics on the card, and NO calibration baked (model emits raw score).")
 
     model.eval()
     card = render_model_card(repo_id=args.repo_id, backbone=BACKBONE, model_cfg=model_cfg, metrics=metrics)

@@ -15,7 +15,7 @@ class ModelConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    manifest_path: str = "data/manifest.parquet"
+    manifest_path: str | list[str] = "data/manifest.parquet"  # one parquet, or a list to merge several sources for training
     num_workers: int = 4
 
 

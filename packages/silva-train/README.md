@@ -26,11 +26,13 @@ Training reads a columnar parquet defined by `silva_train.data.manifest`:
 |---|---|---|---|
 | `embedding` | list<float>[1152] | yes | SigLIP2-SO400M-384 image embedding |
 | `personal_score` | int 1..5 | yes | your rating |
-| `split` | `train`/`val`/`test` | yes | `assign_splits` gives leakage-free splits |
-| `post_id` | int | no | provenance / dedup key |
+| `split` | `train`/`val`/`test` | yes | content-keyed by embedding (leakage-free, id-free) |
+| `post_id` | int | no | optional provenance label (unused by splitting/merging) |
 
 Build one from any source with `build_manifest` / `write_manifest`; `validate_manifest` enforces
 the contract on load. An adapter for the pictoria SQLite DB ships in `scripts/export_manifest.py`.
+To train on several sources at once, set `data.manifest_path` to a **list** of parquets — they're
+merged on the fly (splits are keyed by embedding content, so cross-source rows never straddle a split).
 
 ## Train
 

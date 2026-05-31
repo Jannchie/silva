@@ -7,18 +7,29 @@ embeddings directly. Turning images (or a DB) into embeddings is a script's job
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from silva_train.data.manifest import validate_manifest
+from silva_train.data.manifest import merge_manifests
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 class AestheticDataset(Dataset):
-    """Yields ``{"embedding": Tensor[D], "score": int}`` for a given split."""
+    """Yields ``{"embedding": Tensor[D], "score": int}`` for a given split.
 
-    def __init__(self, manifest_path: str, split: str) -> None:
-        df = validate_manifest(pd.read_parquet(manifest_path))
+    ``manifest_path`` may be a single parquet or a list of them: multiple manifests are
+    merged on the fly (a plain concat — splits are content-keyed, so cross-source rows
+    never straddle a split). This is how training ingests several sources at once.
+    """
+
+    def __init__(self, manifest_path: str | Sequence[str], split: str) -> None:
+        paths = [manifest_path] if isinstance(manifest_path, str) else list(manifest_path)
+        df = merge_manifests([pd.read_parquet(p) for p in paths])
         self.rows = df[df["split"] == split].reset_index(drop=True)
 
     def __len__(self) -> int:

@@ -44,8 +44,8 @@ support CUDA ≥ 13.2). Training also runs on CPU.
 |---|---|---|---|
 | `embedding` | list<float>[1152] | yes | SigLIP2 image embedding |
 | `personal_score` | int 1..5 | yes | your rating |
-| `split` | `train`/`val`/`test` | yes | use `assign_splits` for leakage-free splits |
-| `post_id` | int | no | provenance / dedup key |
+| `split` | `train`/`val`/`test` | yes | content-keyed by embedding (leakage-free, id-free) |
+| `post_id` | int | no | optional provenance label (unused by splitting/merging) |
 
 An adapter for the pictoria SQLite DB ships in `scripts/`:
 
