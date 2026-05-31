@@ -8,7 +8,9 @@ from silva_train.losses import (
     listwise_loss,
     make_ordinal_targets,
     ordinal_loss,
+    ordinal_to_probs,
     pairwise_ranking_loss,
+    qwk_loss,
     silva_loss,
     soft_spearman_loss,
 )
@@ -143,3 +145,49 @@ def test_silva_loss_soft_spearman_weight_zero_is_noop():
     scores = torch.tensor([1, 2, 3, 4, 5, 2])
     base = silva_loss(logits, scores, ranking_weight=1.0)
     assert silva_loss(logits, scores, ranking_weight=1.0, soft_spearman_weight=0.0).item() == pytest.approx(base.item())
+
+
+def test_ordinal_to_probs_is_valid_distribution_for_monotone_logits():
+    # the head always emits DECREASING logits (latent - increasing thresholds), so the
+    # per-class probabilities must be non-negative and sum to 1.
+    logits = torch.tensor([[3.0, 1.0, -1.0, -3.0], [6.0, 4.0, 2.0, 0.0]])
+    p = ordinal_to_probs(logits)
+    assert p.shape == (2, 5)
+    assert torch.allclose(p.sum(dim=1), torch.ones(2), atol=1e-5)
+    assert (p >= 0).all()
+
+
+def test_qwk_loss_penalises_larger_gaps_more():
+    # the whole point: quadratic weighting makes a 4-off blunder cost more than a 1-off one.
+    scores = torch.tensor([1, 2, 3, 4, 5])
+
+    def loss_for(preds):
+        logits = torch.stack([torch.tensor([10.0 if k < c else -10.0 for k in range(1, 5)]) for c in preds])
+        return qwk_loss(logits, scores).item()
+
+    perfect = loss_for([1, 2, 3, 4, 5])
+    off_by_1 = loss_for([1, 2, 3, 4, 4])  # true 5 predicted 4
+    off_by_4 = loss_for([1, 2, 3, 4, 1])  # true 5 predicted 1
+    assert perfect < off_by_1 < off_by_4
+
+
+def test_qwk_loss_keeps_graph():
+    logits = torch.randn(5, 4).sort(dim=1, descending=True).values.requires_grad_(True)
+    loss = qwk_loss(logits, torch.tensor([1, 2, 3, 4, 5]))
+    loss.backward()  # must not error
+    assert logits.grad is not None
+
+
+def test_silva_loss_adds_weighted_qwk_term():
+    logits = torch.randn(8, 4).sort(dim=1, descending=True).values
+    scores = torch.tensor([1, 2, 3, 4, 5, 1, 3, 5])
+    combined = silva_loss(logits, scores, ranking_weight=1.0, soft_spearman_weight=0.5, qwk_weight=1.0)
+    expected = silva_loss(logits, scores, ranking_weight=1.0, soft_spearman_weight=0.5) + 1.0 * qwk_loss(logits, scores)
+    assert combined.item() == pytest.approx(expected.item(), abs=1e-5)
+
+
+def test_silva_loss_qwk_weight_zero_is_noop():
+    logits = torch.randn(6, 4).sort(dim=1, descending=True).values
+    scores = torch.tensor([1, 2, 3, 4, 5, 2])
+    base = silva_loss(logits, scores, ranking_weight=1.0)
+    assert silva_loss(logits, scores, ranking_weight=1.0, qwk_weight=0.0).item() == pytest.approx(base.item())

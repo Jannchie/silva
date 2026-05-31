@@ -101,28 +101,62 @@ def listwise_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
     return -(target_p * torch.log_softmax(pred, dim=0)).sum()
 
 
+def ordinal_to_probs(logits: torch.Tensor) -> torch.Tensor:
+    """Ordinal threshold logits ``[B, 4]`` -> per-class probabilities ``[B, 5]``.
+
+    ``P(y>k) = sigmoid(logit_k)`` is monotone-decreasing for the head's
+    ``latent - increasing thresholds`` logits, so ``P(y=1)=1-P(y>1)``,
+    ``P(y=k)=P(y>k-1)-P(y>k)``, ``P(y=5)=P(y>4)`` form a valid distribution.
+    """
+    cum = torch.sigmoid(logits)  # P(y > k), k = 1..4
+    p_first = 1 - cum[:, 0:1]
+    p_mid = cum[:, :-1] - cum[:, 1:]
+    p_last = cum[:, NUM_THRESHOLDS - 1 : NUM_THRESHOLDS]
+    return torch.cat([p_first, p_mid, p_last], dim=1).clamp_min(1e-6)
+
+
+def qwk_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+    """Differentiable quadratic-weighted-kappa loss (``1 - kappa``) over the batch.
+
+    Weights each prediction error by the SQUARE of the rating gap, so a 4-off mistake
+    costs ~16x a 1-off one. Unlike ordinal BCE (linear in the gap) and the ranking terms
+    (gap-blind), this directly suppresses large-gap blunders (you=4 / model=1).
+    """
+    n_classes = NUM_THRESHOLDS + 1
+    probs = ordinal_to_probs(logits)  # [B, 5]
+    b = probs.shape[0]
+    ratings = torch.arange(1, 1 + n_classes, device=logits.device, dtype=probs.dtype)
+    weights = (ratings.view(-1, 1) - ratings.view(1, -1)) ** 2 / (n_classes - 1) ** 2
+    onehot = F.one_hot(scores.long() - 1, n_classes).to(probs.dtype)  # [B, 5]
+    observed = probs.t() @ onehot  # soft confusion [5, 5]
+    expected = torch.outer(probs.sum(0), onehot.sum(0)) / b
+    return (weights * observed).sum() / ((weights * expected).sum() + 1e-8)
+
+
 def silva_loss(
     logits: torch.Tensor,
     scores: torch.Tensor,
     pos_weight: torch.Tensor | None = None,
     ranking_weight: float = 0.0,
     soft_spearman_weight: float = 0.0,
+    qwk_weight: float = 0.0,
 ) -> torch.Tensor:
-    """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman.
+    """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman + QWK.
 
     No SmoothL1 regression: the personal 1~5 scale is deliberately non-equidistant
     (1=very bad … 5=very nice), so pulling toward equidistant integer labels would
     fight the ordinal head's self-adjusting thresholds. ``pos_weight`` (see
-    :func:`compute_pos_weight`) balances per-threshold imbalance. Two ranking terms
-    sharpen the Spearman objective the model is selected on: ``ranking_weight`` adds
-    the pairwise :func:`pairwise_ranking_loss`, and ``soft_spearman_weight`` adds the
-    global :func:`soft_spearman_loss` (also markedly improves score calibration /
-    MAE). The tuned recipe is ``ranking_weight=1.0, soft_spearman_weight=0.5``.
-    See design §3.3 / §5.
+    :func:`compute_pos_weight`) balances per-threshold imbalance. ``ranking_weight`` and
+    ``soft_spearman_weight`` sharpen the Spearman objective but are gap-blind;
+    ``qwk_weight`` adds :func:`qwk_loss` (squared-gap penalty) to crush large-gap blunders
+    and improve MAE calibration. Tuned recipe: ``ranking_weight=1.0,
+    soft_spearman_weight=0.5, qwk_weight=1.0``. See design §3.3 / §5.
     """
     loss = ordinal_loss(logits, scores, pos_weight=pos_weight)
     if ranking_weight > 0:
         loss = loss + ranking_weight * pairwise_ranking_loss(logits, scores)
     if soft_spearman_weight > 0:
         loss = loss + soft_spearman_weight * soft_spearman_loss(logits, scores)
+    if qwk_weight > 0:
+        loss = loss + qwk_weight * qwk_loss(logits, scores)
     return loss
