@@ -1,3 +1,20 @@
+## v0.2.0
+
+[v0.1.1...v0.2.0](https://github.com/Jannchie/silva/compare/v0.1.1...v0.2.0)
+
+### :sparkles: Features
+
+- **calibration**: histogram-specify library scores onto the label distribution - By [Jianqi Pan](mailto:jannchie@gmail.com) in [060f79f](https://github.com/Jannchie/silva/commit/060f79f)
+- **losses**: add ordinal label smoothing (eps=0.2) - By [Jianqi Pan](mailto:jannchie@gmail.com) in [607bae4](https://github.com/Jannchie/silva/commit/607bae4)
+- **losses**: add quadratic-weighted-kappa loss to suppress large-gap errors - By [Jianqi Pan](mailto:jannchie@gmail.com) in [76d1c6d](https://github.com/Jannchie/silva/commit/76d1c6d)
+- **manifest**: deterministic hash splits with incremental-update diff - By [Jianqi Pan](mailto:jannchie@gmail.com) in [be658a1](https://github.com/Jannchie/silva/commit/be658a1)
+- **scripts**: add pictoria DB scoring and label-review tooling - By [Jianqi Pan](mailto:jannchie@gmail.com) in [c42a46f](https://github.com/Jannchie/silva/commit/c42a46f)
+- **silva**: bake calibration into the model, rename SDK facade to SilvaScorer - By [Jianqi Pan](mailto:jannchie@gmail.com) in [5cdacc1](https://github.com/Jannchie/silva/commit/5cdacc1)
+
+### :wrench: Chores
+
+- **scripts**: add label-audit and model diagnostics tooling - By [Jianqi Pan](mailto:jannchie@gmail.com) in [84aaa1e](https://github.com/Jannchie/silva/commit/84aaa1e)
+
 ## v0.1.1
 
 [v0.1.0...v0.1.1](https://github.com/Jannchie/silva/compare/v0.1.0...v0.1.1)
