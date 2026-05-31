@@ -24,3 +24,6 @@ wheels/
 # Hugging Face publish artifacts (scripts/push_to_hub.py --dry-run)
 /hub_export/
 hub_export_readme.md
+
+# Label-review thumbnails (scripts/sample_review.py)
+/review_out/
