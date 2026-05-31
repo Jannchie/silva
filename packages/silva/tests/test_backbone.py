@@ -1,7 +1,7 @@
 import torch
 
 from silva.backbone import BACKBONE, score_images
-from silva.hub import HubAestheticModel
+from silva.models.aesthetic import EmbeddingAestheticModel
 
 
 def test_backbone_is_pinned_to_patch14():
@@ -10,7 +10,7 @@ def test_backbone_is_pinned_to_patch14():
 
 
 def test_score_images_runs_head_on_embedder_output():
-    head = HubAestheticModel(embedding_dim=16).eval()
+    head = EmbeddingAestheticModel(embedding_dim=16).eval()
 
     class DummyEmbedder:
         def embed(self, image):

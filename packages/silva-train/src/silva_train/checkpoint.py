@@ -7,7 +7,7 @@ The best checkpoint is two files in the run directory:
 
 This replaces a single ``torch.save({...}).pt`` so loading never needs
 ``torch.load(weights_only=False)`` (arbitrary-code pickle execution). The published
-Hub artifact is already ``model.safetensors`` via :class:`~silva.hub.HubAestheticModel`;
+Hub artifact is already ``model.safetensors`` via :class:`~silva.models.aesthetic.EmbeddingAestheticModel`;
 this brings the local checkpoint to the same footing.
 """
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-from silva_train.calibration import histogram_specify
+from silva_train.calibration import build_calibration_lut, histogram_specify
 
 
 def test_histogram_specify_matches_target_distribution():
@@ -51,6 +51,31 @@ def test_histogram_specify_smooth_roughly_tracks_target():
     s = histogram_specify(values, [1, 11, 39, 33, 16], smooth=True)
     assert (s < 0.2).mean() < 0.10
     assert (s > 0.8).mean() < 0.30
+
+
+def test_build_calibration_lut_is_monotone_and_bounded():
+    # the LUT must be a monotone (latent -> score) table covering [0, 1].
+    rng = np.random.default_rng(5)
+    latents = rng.normal(size=5000)
+    lat_knots, score_knots = build_calibration_lut(latents, [1, 11, 39, 33, 16], n_knots=256)
+    assert len(lat_knots) == 256
+    assert len(score_knots) == 256
+    assert np.all(np.diff(lat_knots) >= 0)
+    assert np.all(np.diff(score_knots) >= -1e-6)
+    assert score_knots.min() >= 0.0
+    assert score_knots.max() <= 1.0
+
+
+def test_build_calibration_lut_interp_reproduces_histogram_specify():
+    # applying the LUT (single-image interp) must reproduce the batch histogram_specify,
+    # so a per-image SDK and the library writer agree on the same calibrated score.
+    rng = np.random.default_rng(6)
+    latents = rng.normal(size=4000)
+    target = [1, 11, 39, 33, 16]
+    lat_knots, score_knots = build_calibration_lut(latents, target, n_knots=512)
+    lut = np.interp(latents, lat_knots, score_knots)
+    ref = histogram_specify(latents, target, smooth=True)
+    assert np.corrcoef(lut, ref)[0, 1] > 0.999
 
 
 def test_histogram_specify_normalises_unnormalised_target():

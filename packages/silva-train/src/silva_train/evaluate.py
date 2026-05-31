@@ -30,7 +30,7 @@ def evaluate(
     state, _config, _metrics = load_checkpoint(checkpoint)
 
     model = EmbeddingAestheticModel(embedding_dim=embedding_dim, dropout=dropout, hidden_dims=hidden_dims)
-    model.load_state_dict(state)
+    model.load_state_dict(state, strict=False)  # calibration buffers are optional (filled at publish time), absent in training checkpoints
     model.to(device).eval()
 
     loader = DataLoader(AestheticDataset(manifest_path, split), batch_size=batch_size, num_workers=num_workers)

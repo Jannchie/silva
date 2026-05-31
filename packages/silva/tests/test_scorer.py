@@ -1,6 +1,6 @@
 import torch
 
-from silva import AestheticScorer
+from silva import SilvaScorer
 from silva.models.aesthetic import EmbeddingAestheticModel
 
 
@@ -12,7 +12,7 @@ class DummyEmbedder:
 
 
 def make_scorer():
-    scorer = AestheticScorer(EmbeddingAestheticModel(embedding_dim=16))
+    scorer = SilvaScorer(EmbeddingAestheticModel(embedding_dim=16))
     scorer._embedder = DummyEmbedder()  # bypass lazy backbone load  # noqa: SLF001
     return scorer
 
@@ -32,7 +32,7 @@ def test_list_input_returns_list_of_floats():
 
 def test_does_not_load_backbone_until_first_score():
     # Constructing the scorer must not touch transformers/pillow.
-    scorer = AestheticScorer(EmbeddingAestheticModel(embedding_dim=16))
+    scorer = SilvaScorer(EmbeddingAestheticModel(embedding_dim=16))
     assert scorer._embedder is None  # noqa: SLF001
 
 

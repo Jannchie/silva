@@ -1,17 +1,18 @@
 """End-to-end facade: image(s) -> aesthetic score(s) in ``[0, 1]``.
 
-``AestheticScorer`` ties the published head to the SigLIP2 backbone behind one
-``score`` call, so callers never touch embeddings, processors, or tensors:
+``SilvaScorer`` ties the published head to the SigLIP2 backbone behind one ``score``
+call, so callers never touch embeddings, processors, or tensors:
 
-    from silva import AestheticScorer
+    from silva import SilvaScorer
 
-    scorer = AestheticScorer.from_pretrained("Jannchie/silva-aesthetic")
+    scorer = SilvaScorer.from_pretrained("Jannchie/silva-aesthetic")
     scorer.score("a.png")             # -> 0.73
     scorer.score(["a.png", "b.png"])  # -> [0.73, 0.41]
 
-The backbone (``transformers`` + ``pillow``, the ``[backbone]`` extra) is loaded
-lazily on the first ``score`` call, so importing this module — and constructing a
-scorer from an already-loaded head — needs only the core install.
+The score is the head's ``calibrated_score`` when the published model carries a baked
+calibration LUT (otherwise the raw score). The backbone (``transformers`` + ``pillow``,
+the ``[backbone]`` extra) is loaded lazily on the first ``score`` call, so importing
+this module needs only the core install.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from os import PathLike
 from typing import TYPE_CHECKING
 
 from silva.backbone import Embedder, score_images
-from silva.hub import HubAestheticModel
+from silva.models.aesthetic import EmbeddingAestheticModel
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
     ImageInput = str | PathLike[str] | Image
 
 
-class AestheticScorer:
+class SilvaScorer:
     """Scores images for personal aesthetic appeal via a published head + SigLIP2 backbone."""
 
     def __init__(self, head: nn.Module, *, device: str | None = None) -> None:
@@ -40,9 +41,9 @@ class AestheticScorer:
         self._embedder: Embedder | None = None
 
     @classmethod
-    def from_pretrained(cls, repo_id: str, *, device: str | None = None) -> AestheticScorer:
+    def from_pretrained(cls, repo_id: str, *, device: str | None = None) -> SilvaScorer:
         """Load the published head from the Hugging Face Hub (e.g. ``"Jannchie/silva-aesthetic"``)."""
-        return cls(HubAestheticModel.from_pretrained(repo_id), device=device)
+        return cls(EmbeddingAestheticModel.from_pretrained(repo_id), device=device)
 
     @property
     def embedder(self) -> Embedder:

@@ -3,12 +3,13 @@ import torch
 from silva.models.aesthetic import EmbeddingAestheticModel
 
 
-def test_forward_returns_only_logits_and_score():
+def test_forward_returns_logits_score_and_calibrated():
     model = EmbeddingAestheticModel(embedding_dim=16)
     out = model(torch.randn(3, 16))
-    assert set(out) == {"logits", "score"}
+    assert set(out) == {"logits", "score", "calibrated_score"}
     assert out["logits"].shape == (3, 4)
     assert out["score"].shape == (3,)
+    assert out["calibrated_score"].shape == (3,)
 
 
 def test_score_in_unit_range():

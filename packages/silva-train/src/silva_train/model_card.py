@@ -60,9 +60,9 @@ model, so it won't match anyone else's preferences. Output is a single number in
 
 ```python
 # pip install "silva-scorer[backbone] @ git+{REPO_URL}"
-from silva import AestheticScorer
+from silva import SilvaScorer
 
-scorer = AestheticScorer.from_pretrained("{repo_id}")
+scorer = SilvaScorer.from_pretrained("{repo_id}")
 print(scorer.score("your_image.jpg"))     # 0.73
 print(scorer.score(["a.jpg", "b.jpg"]))    # [0.73, 0.41]
 ```
@@ -71,10 +71,10 @@ Already have `{backbone}` embeddings? Skip the backbone and score them directly:
 
 ```python
 # pip install "silva-scorer @ git+{REPO_URL}"
-from silva import HubAestheticModel
+from silva import EmbeddingAestheticModel
 
-head = HubAestheticModel.from_pretrained("{repo_id}").eval()
-score = head(embedding)["score"]  # embedding: [B, 1152] raw pooler_output
+head = EmbeddingAestheticModel.from_pretrained("{repo_id}").eval()
+score = head(embedding)["calibrated_score"]  # calibrated to the label distribution; ["score"] for raw. embedding: [B, 1152] pooler_output
 ```
 
 ## Scores (held-out test split)

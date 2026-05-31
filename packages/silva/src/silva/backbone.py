@@ -51,4 +51,4 @@ class Embedder:
 def score_images(images: Sequence[Image], head: nn.Module, embedder: Embedder) -> list[float]:
     """Embed each image and run the head, returning the ``[0, 1]`` aesthetic score per image."""
     head.eval()
-    return [float(head(embedder.embed(image))["score"].item()) for image in images]
+    return [float(head(embedder.embed(image))["calibrated_score"].item()) for image in images]

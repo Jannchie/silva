@@ -49,3 +49,21 @@ def histogram_specify(values: np.ndarray, target_fracs: list[float] | np.ndarray
     seg = np.clip(np.searchsorted(cum, cumfrac, side="right") - 1, 0, levels - 1)
     local = (cumfrac - cum[seg]) / (cum[seg + 1] - cum[seg])  # position within the band
     return (seg + local) / levels
+
+
+def build_calibration_lut(
+    latents: np.ndarray, target_fracs: list[float] | np.ndarray, n_knots: int = 512
+) -> tuple[np.ndarray, np.ndarray]:
+    """Bake the histogram-specification curve into a ``(lat_knots, score_knots)`` lookup table.
+
+    The batch :func:`histogram_specify` needs the whole library (a global rank). To let a
+    *per-image* model reproduce the same calibrated score, snapshot the curve as ``n_knots``
+    monotone (latent -> score) points: take ``latents`` quantiles as the latent grid, and the
+    smooth histogram-spec map at those (their rank-fractions are exactly the quantile levels)
+    as the scores. At inference, ``interp(latent, lat_knots, score_knots)`` recovers the score
+    with no global context. Returns float32 arrays, both sorted ascending.
+    """
+    p = (np.arange(n_knots) + 0.5) / n_knots
+    lat_knots = np.quantile(np.asarray(latents, dtype=float), p)
+    score_knots = histogram_specify(lat_knots, target_fracs, smooth=True)
+    return lat_knots.astype(np.float32), score_knots.astype(np.float32)

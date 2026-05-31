@@ -18,9 +18,9 @@ def main() -> None:
     parser.add_argument("--device", default=None, help="torch device override (default: auto)")
     args = parser.parse_args()
 
-    from silva.scorer import AestheticScorer  # noqa: PLC0415
+    from silva.scorer import SilvaScorer  # noqa: PLC0415
 
-    scorer = AestheticScorer.from_pretrained(args.repo_id, device=args.device)
+    scorer = SilvaScorer.from_pretrained(args.repo_id, device=args.device)
     for path, score in zip(args.images, scorer.score(args.images), strict=True):
         print(f"{path}\tscore={score:.4f}")
 
