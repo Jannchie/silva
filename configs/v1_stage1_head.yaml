@@ -5,7 +5,9 @@ model:
   hidden_dims: [1024, 512, 256]   # deeper trunk: single-model test Spearman 0.738 (val 0.738)
 
 data:
-  manifest_path: data/manifest.parquet
+  manifest_path:                  # multiple parquets are merged on the fly (splits are content-keyed, so no cross-source leakage)
+    - data/manifest.parquet       # pictoria library (1~5 labels)
+    - data/bad.parquet            # 1000 worst-case (score=1) anchors, train-only (kept out of val/test so the metric stays comparable)
   num_workers: 0   # embeddings live in memory; workers would just copy the DataFrame
 
 train:

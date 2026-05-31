@@ -1,0 +1,35 @@
+# Ablation of v1_stage1_head: identical hyperparameters, but trained on the updated
+# real manifest ONLY (no bad.parquet) — to isolate whether the synthetic 1-floor helps
+# or distorts the bottom of the real 2~5 scale. Compare test spearman + the score=2 row
+# of the confusion matrix against outputs/v1_stage1_head.
+model:
+  embedding_dim: 1152
+  dropout: 0.3
+  hidden_dims: [1024, 512, 256]
+
+data:
+  manifest_path: data/manifest.parquet   # real labels only (2~5), no synthetic floor
+  num_workers: 0
+
+train:
+  batch_size: 256
+  grad_accum: 1
+  epochs: 40
+  lr_head: 1.5e-3
+  weight_decay: 0.05
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  use_pos_weight: true
+  ranking_weight: 1.0
+  soft_spearman_weight: 0.5
+  qwk_weight: 1.0
+  label_smoothing: 0.2
+  mixed_precision: bf16
+  report_to: none
+  project_name: silva
+  run_name: null
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 40
+  seed: 42
+  output_dir: outputs/ablation_nobad
