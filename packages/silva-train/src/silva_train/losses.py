@@ -26,8 +26,14 @@ def ordinal_loss(
     scores: torch.Tensor,
     pos_weight: torch.Tensor | None = None,
     reduction: str = "mean",
+    label_smoothing: float = 0.0,
 ) -> torch.Tensor:
     targets = make_ordinal_targets(scores).to(logits.dtype)
+    if label_smoothing > 0:
+        # Soften {0, 1} -> {eps, 1-eps}: the optimum logit becomes the FINITE value
+        # ln((1-eps)/eps) instead of +-inf, so the head stops pushing latent to +-40
+        # and sigmoid never saturates (this is what crushes the 0~1 tail pile-up).
+        targets = targets * (1 - 2 * label_smoothing) + label_smoothing
     if pos_weight is not None:
         pos_weight = pos_weight.to(logits.dtype)
     return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight, reduction=reduction)
@@ -140,6 +146,7 @@ def silva_loss(
     ranking_weight: float = 0.0,
     soft_spearman_weight: float = 0.0,
     qwk_weight: float = 0.0,
+    label_smoothing: float = 0.0,
 ) -> torch.Tensor:
     """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman + QWK.
 
@@ -152,7 +159,7 @@ def silva_loss(
     and improve MAE calibration. Tuned recipe: ``ranking_weight=1.0,
     soft_spearman_weight=0.5, qwk_weight=1.0``. See design §3.3 / §5.
     """
-    loss = ordinal_loss(logits, scores, pos_weight=pos_weight)
+    loss = ordinal_loss(logits, scores, pos_weight=pos_weight, label_smoothing=label_smoothing)
     if ranking_weight > 0:
         loss = loss + ranking_weight * pairwise_ranking_loss(logits, scores)
     if soft_spearman_weight > 0:

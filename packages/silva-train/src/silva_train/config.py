@@ -31,6 +31,7 @@ class TrainConfig(BaseModel):
     ranking_weight: float = 0.0  # weight on pairwise ranking loss (directly optimises Spearman)
     soft_spearman_weight: float = 0.0  # weight on global soft-Spearman loss (ranking + calibration)
     qwk_weight: float = 0.0  # weight on quadratic-weighted-kappa loss (crushes large-gap blunders, improves MAE)
+    label_smoothing: float = 0.0  # soften ordinal targets {0,1}->{eps,1-eps}; keeps latent finite, kills the 0~1 tail saturation
     mixed_precision: str = "bf16"  # accelerate mixed precision; "no" for CPU
     report_to: str = "none"        # "wandb" to log to Weights & Biases, "none" to disable
     project_name: str = "silva"

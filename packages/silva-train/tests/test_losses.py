@@ -58,6 +58,31 @@ def test_compute_pos_weight_balances_each_threshold():
     assert torch.allclose(pw, torch.tensor([0.25, 2 / 3, 1.5, 4.0]))
 
 
+def test_ordinal_loss_label_smoothing_penalises_overconfident_logits():
+    # Without smoothing, ever-larger correct logits keep lowering the loss (BCE pushes
+    # latent to +inf -> saturated sigmoid). With label smoothing the optimum is a FINITE
+    # logit ln((1-eps)/eps); overshooting past the smoothed target now costs MORE.
+    scores = torch.tensor([5, 5, 5])  # targets all [1, 1, 1, 1]
+    moderate = torch.full((3, 4), math.log(0.9 / 0.1))  # sigmoid = 0.9 = 1 - eps
+    extreme = torch.full((3, 4), 40.0)  # sigmoid ~ 1 (saturated)
+    # no smoothing: saturation is rewarded (extreme has the lower loss)
+    assert ordinal_loss(extreme, scores).item() < ordinal_loss(moderate, scores).item()
+    # smoothing eps=0.1: hitting exactly 1-eps beats overshooting into saturation
+    assert ordinal_loss(moderate, scores, label_smoothing=0.1).item() < ordinal_loss(extreme, scores, label_smoothing=0.1).item()
+
+
+def test_ordinal_loss_label_smoothing_zero_is_noop():
+    logits, scores = torch.randn(4, 4), torch.tensor([1, 2, 4, 5])
+    assert ordinal_loss(logits, scores, label_smoothing=0.0).item() == pytest.approx(ordinal_loss(logits, scores).item())
+
+
+def test_silva_loss_passes_label_smoothing_through():
+    logits, scores = torch.randn(4, 4), torch.tensor([1, 2, 4, 5])
+    assert silva_loss(logits, scores, label_smoothing=0.1).item() == pytest.approx(
+        ordinal_loss(logits, scores, label_smoothing=0.1).item()
+    )
+
+
 def test_ordinal_loss_pos_weight_none_equals_unweighted():
     logits, scores = torch.zeros(2, 4), torch.tensor([3, 3])
     ones = torch.ones(4)

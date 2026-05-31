@@ -109,6 +109,7 @@ def train(config_path: str) -> dict[str, float]:
                     ranking_weight=cfg.train.ranking_weight,
                     soft_spearman_weight=cfg.train.soft_spearman_weight,
                     qwk_weight=cfg.train.qwk_weight,
+                    label_smoothing=cfg.train.label_smoothing,
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
