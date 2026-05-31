@@ -19,6 +19,7 @@ Schema
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,29 +36,38 @@ MAX_SCORE = 5
 DEFAULT_RATIOS = (0.85, 0.10, 0.05)
 
 
+def _split_point(key: Hashable, seed: int) -> float:
+    """Map a key to a stable point in ``[0, 1)`` via a seeded hash (process-independent)."""
+    digest = hashlib.blake2b(f"{seed}:{key}".encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "big") / 2**64
+
+
 def assign_splits(
     keys: Sequence[Hashable],
     ratios: tuple[float, float, float] = DEFAULT_RATIOS,
     seed: int = 42,
+    existing: dict[Hashable, str] | None = None,
 ) -> list[str]:
-    """Assign a split label per row, keyed by ``keys`` so the same key never leaks across splits."""
-    unique = sorted(set(keys))
-    n = len(unique)
-    perm = np.random.default_rng(seed).permutation(n)
-    n_train = round(ratios[0] * n)
-    n_val = round(ratios[1] * n)
+    """Assign a split label per row, keyed by ``keys`` so the same key never leaks across splits.
 
-    label_of: dict[Hashable, str] = {}
-    for rank, idx in enumerate(perm):
-        if rank < n_train:
-            label = "train"
-        elif rank < n_train + n_val:
-            label = "val"
-        else:
-            label = "test"
-        label_of[unique[idx]] = label
-
-    return [label_of[k] for k in keys]
+    Each key is bucketed by a deterministic seeded hash into ``[0, 1)``, so its split is
+    independent of every other key: adding or removing rows never moves an existing key
+    across splits, which keeps incremental dataset updates leakage-free. ``existing`` pins
+    keys to a previously-assigned split (overriding the hash); unknown keys are hashed.
+    Because buckets are per-key, the realised ratios only *approximate* ``ratios`` (exact
+    counts would require global knowledge, which is what breaks incremental stability).
+    """
+    existing = existing or {}
+    t_train = ratios[0]
+    t_val = ratios[0] + ratios[1]
+    labels: list[str] = []
+    for key in keys:
+        if key in existing:
+            labels.append(existing[key])
+            continue
+        u = _split_point(key, seed)
+        labels.append("train" if u < t_train else "val" if u < t_val else "test")
+    return labels
 
 
 def build_manifest(
@@ -65,10 +75,13 @@ def build_manifest(
     embeddings: Sequence[Sequence[float]],
     scores: Sequence[int],
     seed: int = 42,
+    existing: dict[Hashable, str] | None = None,
 ) -> pd.DataFrame:
     """Shape parallel ``(post_id, embedding, score)`` columns into a split-assigned manifest.
 
-    ``post_id`` is the leakage-free split key. Validate/persist via :func:`write_manifest`.
+    ``post_id`` is the leakage-free split key. Pass ``existing`` (a ``post_id -> split`` map
+    from a previous manifest) to pin known posts to their prior split on an incremental
+    rebuild; new posts are hashed in. Validate/persist via :func:`write_manifest`.
     """
     df = pd.DataFrame(
         {
@@ -77,8 +90,32 @@ def build_manifest(
             "personal_score": [int(s) for s in scores],
         }
     )
-    df["split"] = assign_splits(df["post_id"].tolist(), seed=seed)
+    df["split"] = assign_splits(df["post_id"].tolist(), seed=seed, existing=existing)
     return df
+
+
+def diff_manifests(old: pd.DataFrame, new: pd.DataFrame) -> dict:
+    """Summarise what changed between two manifests, keyed by ``post_id``.
+
+    Returns added / removed / rescored post lists plus the new split and score
+    distributions — the payload an update report prints. Both frames need ``post_id``.
+    """
+    old_score = {int(k): int(v) for k, v in zip(old["post_id"], old["personal_score"], strict=True)}
+    new_score = {int(k): int(v) for k, v in zip(new["post_id"], new["personal_score"], strict=True)}
+    old_ids, new_ids = set(old_score), set(new_score)
+    added = sorted(new_ids - old_ids)
+    removed = sorted(old_ids - new_ids)
+    rescored = [(pid, old_score[pid], new_score[pid]) for pid in sorted(old_ids & new_ids) if old_score[pid] != new_score[pid]]
+    return {
+        "n_added": len(added),
+        "added_ids": added,
+        "n_removed": len(removed),
+        "removed_ids": removed,
+        "n_rescored": len(rescored),
+        "rescored": rescored,
+        "split_counts": {k: int(v) for k, v in new["split"].value_counts().items()},
+        "score_counts": {int(k): int(v) for k, v in new["personal_score"].value_counts().sort_index().items()},
+    }
 
 
 def validate_manifest(df: pd.DataFrame) -> pd.DataFrame:

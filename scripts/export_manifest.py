@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 
-from silva_train.data.manifest import build_manifest, write_manifest
+from silva_train.data.manifest import build_manifest, diff_manifests, write_manifest
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -78,7 +80,14 @@ def main() -> None:
     parser.add_argument("--output", default="data/manifest.parquet")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--per-score-limit", type=int, default=None, help="cap rows per score (1..5) for a small balanced debug set")
+    parser.add_argument("--previous", default=None, help="prior manifest to freeze splits from + diff against; defaults to --output if it already exists")
     args = parser.parse_args()
+
+    # incremental update: carry over splits from the prior manifest so existing posts never
+    # move across train/val/test, and diff against it to report what this refresh changed.
+    prev_path = Path(args.previous) if args.previous else Path(args.output)
+    old_df = pd.read_parquet(prev_path) if prev_path.exists() else None
+    existing = {int(pid): str(sp) for pid, sp in zip(old_df["post_id"], old_df["split"], strict=True)} if old_df is not None else None
 
     post_ids: list[int] = []
     embeddings: list[list[float]] = []
@@ -88,11 +97,21 @@ def main() -> None:
         embeddings.append(embedding)
         scores.append(score)
 
-    df = build_manifest(post_ids, embeddings, scores, seed=args.seed)
+    df = build_manifest(post_ids, embeddings, scores, seed=args.seed, existing=existing)
     out = write_manifest(df, args.output)
     print(f"Wrote {len(df)} rows to {out}")
     print(df["split"].value_counts().to_string())
     print(df["personal_score"].value_counts().sort_index().to_string())
+
+    if old_df is not None:
+        d = diff_manifests(old_df, df)
+        print(f"\n=== update vs {prev_path.name} ===")
+        print(f"added: {d['n_added']}  removed: {d['n_removed']}  rescored: {d['n_rescored']}  (carried-over splits: {len(existing)})")
+        if d["n_rescored"]:
+            preview = ", ".join(f"#{p}:{a}->{b}" for p, a, b in d["rescored"][:10])
+            print(f"  rescored e.g. {preview}{' ...' if d['n_rescored'] > 10 else ''}")
+        if d["n_added"]:
+            print(f"  added ids e.g. {d['added_ids'][:10]}{' ...' if d['n_added'] > 10 else ''}")
 
 
 if __name__ == "__main__":

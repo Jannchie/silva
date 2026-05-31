@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from silva_train.data.manifest import build_manifest, validate_manifest, write_manifest
+from silva_train.data.manifest import build_manifest, diff_manifests, validate_manifest, write_manifest
 
 
 def _valid_df() -> pd.DataFrame:
@@ -101,3 +101,22 @@ def test_build_manifest_dedups_split_by_post_id():
     df = build_manifest(post_ids, embeddings, scores, seed=0)
     by_id = df.groupby("post_id")["split"].nunique()
     assert (by_id == 1).all()
+
+
+def test_build_manifest_carries_over_existing_splits():
+    # incremental update: a prior post_id keeps its split even if the hash would differ
+    existing = {1: "test", 2: "test"}
+    df = build_manifest([1, 2, 3], [[0.0]] * 3, [3, 4, 5], existing=existing)
+    by_id = dict(zip(df["post_id"], df["split"], strict=True))
+    assert by_id[1] == "test"
+    assert by_id[2] == "test"
+
+
+def test_diff_manifests_reports_added_removed_rescored():
+    old = build_manifest([1, 2, 3], [[0.0]] * 3, [3, 4, 5], seed=0)
+    new = build_manifest([2, 3, 4], [[0.0]] * 3, [4, 1, 2], seed=0)  # drop 1, add 4, rescore 3: 5->1
+    d = diff_manifests(old, new)
+    assert d["added_ids"] == [4]
+    assert d["removed_ids"] == [1]
+    assert d["rescored"] == [(3, 5, 1)]
+    assert (d["n_added"], d["n_removed"], d["n_rescored"]) == (1, 1, 1)
