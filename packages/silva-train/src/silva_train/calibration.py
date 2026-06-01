@@ -42,12 +42,16 @@ def histogram_specify(values: np.ndarray, target_fracs: list[float] | np.ndarray
 
         # invert the target CDF smoothly: score = G^{-1}(rank-fraction). Knots are the band
         # edges (score axis) against their cumulative target mass; PCHIP keeps it monotone.
+        # Zero-weight bands create duplicate cum values; drop them so PCHIP gets strict x.
         band_edges = np.linspace(0.0, 1.0, levels + 1)
-        inv = PchipInterpolator(cum, band_edges)
+        keep = np.concatenate([[True], np.diff(cum) > 0])
+        inv = PchipInterpolator(cum[keep], band_edges[keep])
         return np.clip(inv(cumfrac), 0.0, 1.0)
 
     seg = np.clip(np.searchsorted(cum, cumfrac, side="right") - 1, 0, levels - 1)
-    local = (cumfrac - cum[seg]) / (cum[seg + 1] - cum[seg])  # position within the band
+    width = cum[seg + 1] - cum[seg]
+    width = np.where(width > 0, width, 1.0)  # guard against zero-weight bands
+    local = (cumfrac - cum[seg]) / width
     return (seg + local) / levels
 
 

@@ -24,7 +24,7 @@ train:
   soft_spearman_weight: 0.5
   qwk_weight: 1.0
   label_smoothing: 0.2
-  mixed_precision: bf16
+  mixed_precision: "no"   # 与 v1_stage1_head 保持一致：head 极小、fp32 数值更稳，消融需控制变量
   report_to: none
   project_name: silva
   run_name: null
