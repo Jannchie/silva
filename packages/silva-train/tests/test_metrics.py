@@ -1,6 +1,11 @@
 import math
 
+import numpy as np
+
 from silva_train.metrics import (
+    MetricCI,
+    _wilson_ci,
+    bootstrap_ci,
     compute_metrics,
     is_improvement,
     mae,
@@ -74,3 +79,74 @@ def test_is_improvement_equal_is_not_improvement():
 
 def test_is_improvement_nan_is_never_improvement():
     assert is_improvement(float("nan"), -math.inf) is False
+
+
+# --- bootstrap_ci ---
+
+
+def test_bootstrap_ci_returns_all_metric_keys():
+    rng = np.random.default_rng(0)
+    p = rng.uniform(1, 5, size=200)
+    t = np.clip(np.rint(p + rng.normal(0, 0.5, size=200)), 1, 5)
+    result = bootstrap_ci(p, t, n_resamples=50)
+    assert set(result) == set(compute_metrics(p, t))
+
+
+def test_bootstrap_ci_interval_contains_point_estimate():
+    rng = np.random.default_rng(1)
+    p = rng.uniform(1, 5, size=200)
+    t = np.clip(np.rint(p + rng.normal(0, 0.5, size=200)), 1, 5)
+    result = bootstrap_ci(p, t, n_resamples=200)
+    for k, m in result.items():
+        assert m.lo <= m.value <= m.hi, f"{k}: {m.lo} <= {m.value} <= {m.hi}"
+
+
+def test_bootstrap_ci_perfect_predictions_tight_interval():
+    p = np.array([1.0, 2.0, 3.0, 4.0, 5.0] * 20)
+    t = np.array([1.0, 2.0, 3.0, 4.0, 5.0] * 20)
+    result = bootstrap_ci(p, t, n_resamples=200)
+    assert result["mae"].value == 0.0
+    assert result["mae"].hi < 0.01
+
+
+def test_bootstrap_ci_deterministic_with_seed():
+    p = np.array([1.5, 2.3, 3.7, 4.1, 2.9] * 10)
+    t = np.array([2, 2, 4, 4, 3] * 10)
+    a = bootstrap_ci(p, t, seed=123)
+    b = bootstrap_ci(p, t, seed=123)
+    for k in a:
+        assert a[k].lo == b[k].lo
+        assert a[k].hi == b[k].hi
+
+
+def test_metric_ci_str_format():
+    m = MetricCI(value=0.738, lo=0.715, hi=0.762)
+    assert str(m) == "0.7380 [0.7150, 0.7620]"
+
+
+def test_bootstrap_ci_top_k_uses_wilson_interval():
+    """top_k CIs should always contain the point estimate (Wilson, not bootstrap)."""
+    rng = np.random.default_rng(2)
+    p = rng.uniform(1, 5, size=200)
+    t = np.clip(np.rint(p + rng.normal(0, 0.5, size=200)), 1, 5)
+    result = bootstrap_ci(p, t, n_resamples=50)
+    for name in ("top_1pct", "top_5pct"):
+        m = result[name]
+        assert m.lo <= m.value <= m.hi, f"{name}: {m.lo} <= {m.value} <= {m.hi}"
+
+
+def test_wilson_ci_contains_proportion():
+    lo, hi = _wilson_ci(7, 20)
+    assert lo <= 7 / 20 <= hi
+
+
+def test_wilson_ci_perfect_hit():
+    lo, hi = _wilson_ci(50, 50)
+    assert lo > 0.9
+    assert hi == 1.0
+
+
+def test_wilson_ci_zero_hits():
+    lo, hi = _wilson_ci(0, 50)
+    assert lo < 1e-10
+    assert hi < 0.1

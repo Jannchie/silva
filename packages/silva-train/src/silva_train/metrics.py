@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 from scipy import stats
@@ -79,18 +80,127 @@ def is_improvement(current: float, best: float) -> bool:
     return not math.isnan(current) and current > best
 
 
+_TOP_K_FRACS: dict[str, float] = {"top_1pct": 0.01, "top_5pct": 0.05}
+
+
+def _continuous_metrics(
+    p: np.ndarray,
+    t: np.ndarray,
+    min_rating: int = 1,
+    max_rating: int = 5,
+) -> dict[str, float]:
+    return {
+        "mae": mae(p, t),
+        "rmse": rmse(p, t),
+        "pearson": pearson(p, t),
+        "spearman": spearman(p, t),
+        "qwk": quadratic_weighted_kappa(p, t, min_rating, max_rating),
+    }
+
+
 def compute_metrics(
     preds: ArrayLike,
     targets: ArrayLike,
     min_rating: int = 1,
     max_rating: int = 5,
 ) -> dict[str, float]:
-    return {
-        "mae": mae(preds, targets),
-        "rmse": rmse(preds, targets),
-        "pearson": pearson(preds, targets),
-        "spearman": spearman(preds, targets),
-        "qwk": quadratic_weighted_kappa(preds, targets, min_rating, max_rating),
-        "top_1pct": top_k_precision(preds, targets, frac=0.01),
-        "top_5pct": top_k_precision(preds, targets, frac=0.05),
-    }
+    p, t = _to_numpy(preds), _to_numpy(targets)
+    m = _continuous_metrics(p, t, min_rating, max_rating)
+    for name, frac in _TOP_K_FRACS.items():
+        m[name] = top_k_precision(p, t, frac=frac)
+    return m
+
+
+@dataclass(frozen=True, slots=True)
+class MetricCI:
+    value: float
+    lo: float
+    hi: float
+
+    def __str__(self) -> str:
+        return f"{self.value:.4f} [{self.lo:.4f}, {self.hi:.4f}]"
+
+
+def _wilson_ci(hits: int, trials: int, confidence: float = 0.95) -> tuple[float, float]:
+    """Wilson score interval for a binomial proportion."""
+    if trials == 0:
+        return 0.0, 1.0
+    z = stats.norm.ppf(1 - (1 - confidence) / 2)
+    p_hat = hits / trials
+    denom = 1 + z**2 / trials
+    centre = (p_hat + z**2 / (2 * trials)) / denom
+    margin = z * math.sqrt(p_hat * (1 - p_hat) / trials + z**2 / (4 * trials**2)) / denom
+    return max(0.0, centre - margin), min(1.0, centre + margin)
+
+
+def bootstrap_ci(
+    preds: ArrayLike,
+    targets: ArrayLike,
+    n_resamples: int = 1000,
+    confidence: float = 0.95,
+    seed: int = 42,
+    min_rating: int = 1,
+    max_rating: int = 5,
+) -> dict[str, MetricCI]:
+    """Point estimates + confidence intervals for all metrics.
+
+    Continuous metrics (mae, rmse, pearson, spearman, qwk) use BCa bootstrap.
+    Top-k precision uses a Wilson score interval (binomial CI on the hit count),
+    because bootstrap resampling with replacement creates duplicates that
+    systematically distort rank-based top-k sets.
+    """
+    p = _to_numpy(preds)
+    t = _to_numpy(targets)
+    n = len(p)
+    rng = np.random.default_rng(seed)
+
+    point = compute_metrics(p, t, min_rating, max_rating)
+    cont_keys = list(_continuous_metrics(p, t, min_rating, max_rating))
+
+    boot = np.empty((n_resamples, len(cont_keys)))
+    for b in range(n_resamples):
+        idx = rng.integers(0, n, size=n)
+        m = _continuous_metrics(p[idx], t[idx], min_rating, max_rating)
+        for j, k in enumerate(cont_keys):
+            boot[b, j] = m[k]
+
+    jack = np.empty((n, len(cont_keys)))
+    mask = np.ones(n, dtype=bool)
+    for i in range(n):
+        mask[i] = False
+        m = _continuous_metrics(p[mask], t[mask], min_rating, max_rating)
+        for j, k in enumerate(cont_keys):
+            jack[i, j] = m[k]
+        mask[i] = True
+
+    alpha = (1 - confidence) / 2
+    z_alpha = stats.norm.ppf(alpha)
+    z_1alpha = stats.norm.ppf(1 - alpha)
+
+    result: dict[str, MetricCI] = {}
+    for j, k in enumerate(cont_keys):
+        theta = point[k]
+        b_col = boot[:, j]
+
+        z0 = stats.norm.ppf(np.clip(np.mean(b_col <= theta), 1e-10, 1 - 1e-10))
+
+        jk = jack[:, j]
+        diff = jk.mean() - jk
+        denom = 6 * (np.sum(diff**2)) ** 1.5
+        acc = float(np.sum(diff**3) / denom) if denom > 0 else 0.0
+
+        def _adj(z_a: float) -> float:
+            numer = z0 + z_a
+            return float(stats.norm.cdf(z0 + numer / (1 - acc * numer)))
+
+        lo = float(np.nanpercentile(b_col, 100 * np.clip(_adj(z_alpha), 0, 1)))
+        hi = float(np.nanpercentile(b_col, 100 * np.clip(_adj(z_1alpha), 0, 1)))
+        result[k] = MetricCI(value=theta, lo=lo, hi=hi)
+
+    for name, frac in _TOP_K_FRACS.items():
+        k = max(1, round(frac * n))
+        hits = round(point[name] * k)
+        lo, hi = _wilson_ci(hits, k, confidence)
+        result[name] = MetricCI(value=point[name], lo=lo, hi=hi)
+
+    return result
