@@ -12,6 +12,7 @@ class ModelConfig(BaseModel):
     embedding_dim: int = 1152  # SigLIP2-SO400M pooled feature width
     dropout: float = 0.1
     hidden_dims: list[int] = Field(default_factory=list)  # MLP trunk before head; [] = linear probe
+    n_residual_blocks: int = 0  # pre-norm residual blocks appended after the MLP trunk
 
 
 class DataConfig(BaseModel):

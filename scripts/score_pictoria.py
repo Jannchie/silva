@@ -53,7 +53,7 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     state, config, _ = load_checkpoint(args.checkpoint)
     mc = config["model"]
-    model = EmbeddingAestheticModel(embedding_dim=mc["embedding_dim"], dropout=mc.get("dropout", 0.1), hidden_dims=mc.get("hidden_dims", []))
+    model = EmbeddingAestheticModel(embedding_dim=mc["embedding_dim"], dropout=mc.get("dropout", 0.1), hidden_dims=mc.get("hidden_dims", []), n_residual_blocks=mc.get("n_residual_blocks", 0))
     model.load_state_dict(state)
     model.to(device).eval()
 

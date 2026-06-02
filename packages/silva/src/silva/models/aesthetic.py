@@ -28,6 +28,22 @@ REPO_URL = "https://github.com/Jannchie/silva"
 N_CAL_KNOTS = 512  # size of the baked calibration lookup table
 
 
+class _ResidualBlock(nn.Module):
+    """Pre-norm residual: LayerNorm -> Linear -> GELU -> Dropout -> Linear -> Dropout -> +skip."""
+
+    def __init__(self, dim: int, dropout: float) -> None:
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.act = nn.GELU()
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.drop(self.act(self.fc1(self.norm(x))))
+        return x + self.drop(self.fc2(h))
+
+
 class EmbeddingAestheticModel(
     nn.Module,
     PyTorchModelHubMixin,
@@ -48,7 +64,7 @@ class EmbeddingAestheticModel(
     keep it JSON-serialisable (``embedding_dim``, ``dropout``, ``hidden_dims``).
     """
 
-    def __init__(self, embedding_dim: int, dropout: float = 0.1, hidden_dims: list[int] | None = None) -> None:
+    def __init__(self, embedding_dim: int, dropout: float = 0.1, hidden_dims: list[int] | None = None, n_residual_blocks: int = 0) -> None:
         super().__init__()
         hidden_dims = hidden_dims or []
         self.norm = nn.LayerNorm(embedding_dim)
@@ -59,6 +75,8 @@ class EmbeddingAestheticModel(
         for h in hidden_dims:
             trunk += [nn.Linear(in_dim, h), nn.GELU(), nn.Dropout(dropout)]
             in_dim = h
+        for _ in range(n_residual_blocks):
+            trunk.append(_ResidualBlock(in_dim, dropout))
         self.trunk = nn.Sequential(*trunk)
         self.head = OrdinalHead(in_dim)
 
