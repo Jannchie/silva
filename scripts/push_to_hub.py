@@ -72,6 +72,7 @@ def main() -> None:
         embedding_dim=model_cfg["embedding_dim"],
         dropout=model_cfg.get("dropout", 0.1),
         hidden_dims=model_cfg.get("hidden_dims", []),
+        n_residual_blocks=model_cfg.get("n_residual_blocks", 0),
     )
     model.load_state_dict(state, strict=False)  # calibration buffers default to zeros; filled by fit_calibration
     model.eval()
@@ -88,6 +89,7 @@ def main() -> None:
         metrics = evaluate(
             args.checkpoint, manifests, "test",
             model_cfg["embedding_dim"], model_cfg.get("dropout", 0.1), model_cfg.get("hidden_dims", []),
+            model_cfg.get("n_residual_blocks", 0),
         )
         print(f"evaluated on test split of {manifests}: spearman={metrics.get('spearman'):.4f}")
         target = fit_calibration(model, manifests)

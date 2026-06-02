@@ -27,6 +27,19 @@ def test_config_persists_constructor_args(tmp_path):
     assert loaded.norm.normalized_shape == (16,)
 
 
+def test_residual_blocks_round_trip_through_pretrained(tmp_path):
+    # the published SDK path must reconstruct a deep residual head from config.json alone:
+    # n_residual_blocks is captured by the Hub mixin, so from_pretrained rebuilds the same
+    # architecture and the residual-block weights survive the safetensors round-trip.
+    model = EmbeddingAestheticModel(embedding_dim=16, hidden_dims=[32], n_residual_blocks=3).eval()
+    model.save_pretrained(tmp_path)
+    loaded = EmbeddingAestheticModel.from_pretrained(tmp_path).eval()
+
+    x = torch.randn(4, 16)
+    with torch.no_grad():
+        assert torch.allclose(model(x)["score"], loaded(x)["score"], atol=1e-6)
+
+
 def test_calibrated_score_falls_back_to_raw_when_unfitted():
     model = EmbeddingAestheticModel(embedding_dim=16).eval()
     x = torch.randn(4, 16)

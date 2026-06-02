@@ -18,6 +18,8 @@ def _fmt(metrics: dict[str, Any], key: str) -> str:
 
 def render_model_card(repo_id: str, backbone: str, model_cfg: dict[str, Any], metrics: dict[str, Any]) -> str:
     hidden = model_cfg.get("hidden_dims", []) or "linear probe"
+    n_res = model_cfg.get("n_residual_blocks", 0)
+    trunk = f"MLP {hidden}" + (f" → {n_res}× residual block" if n_res else "")
     return f"""---
 library_name: silva
 pipeline_tag: image-classification
@@ -83,6 +85,6 @@ score = head(embedding)["calibrated_score"]  # calibrated to the label distribut
 |---|---|---|---|
 | {_fmt(metrics, "spearman")} | {_fmt(metrics, "pearson")} | {_fmt(metrics, "mae")} | {_fmt(metrics, "top_5pct")} |
 
-Architecture: `embedding[1152] → LayerNorm → MLP {hidden} → ordinal head`. Trained on one
+Architecture: `embedding[1152] → LayerNorm → {trunk} → ordinal head`. Trained on one
 person's private 1–5 ratings; labels and images not released. [Source]({REPO_URL})
 """
