@@ -1880,7 +1880,7 @@ wheels = [
 
 [[package]]
 name = "silva-scorer"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/silva" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1904,7 +1904,7 @@ provides-extras = ["backbone"]
 
 [[package]]
 name = "silva-train"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/silva-train" }
 dependencies = [
     { name = "accelerate" },
