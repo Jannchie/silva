@@ -1,3 +1,24 @@
+## v0.3.0
+
+[v0.2.0...v0.3.0](https://github.com/Jannchie/silva/compare/v0.2.0...v0.3.0)
+
+### :sparkles: Features
+
+- **data**: ingest multiple manifests + content-keyed splits - By [Jianqi Pan](mailto:jannchie@gmail.com) in [f2495e0](https://github.com/Jannchie/silva/commit/f2495e0)
+- **eval**: add bootstrap confidence intervals to evaluation metrics - By [Jianqi Pan](mailto:jannchie@gmail.com) in [41a866c](https://github.com/Jannchie/silva/commit/41a866c)
+- **model**: add optional residual blocks to the aesthetic head - By [Jianqi Pan](mailto:jannchie@gmail.com) in [d9fe1a9](https://github.com/Jannchie/silva/commit/d9fe1a9)
+- **publish**: thread n_residual_blocks through the Hub publish path - By [Jianqi Pan](mailto:jannchie@gmail.com) in [da3d2f2](https://github.com/Jannchie/silva/commit/da3d2f2)
+- **train**: add noise-robust training knobs (mixup, EMA, loss truncation, warm restarts) - By [Jianqi Pan](mailto:jannchie@gmail.com) in [2f4c45c](https://github.com/Jannchie/silva/commit/2f4c45c)
+
+### :adhesive_bandage: Fixes
+
+- **calibration**: handle zero-weight bands + default to fp32 - By [Jianqi Pan](mailto:jannchie@gmail.com) in [487b834](https://github.com/Jannchie/silva/commit/487b834)
+
+### :wrench: Chores
+
+- **config**: point training at real manifest + synthetic 1-floor - By [Jianqi Pan](mailto:jannchie@gmail.com) in [3f93971](https://github.com/Jannchie/silva/commit/3f93971)
+- **release**: bump to 0.3.0 - By [Jianqi Pan](mailto:jannchie@gmail.com) in [432804c](https://github.com/Jannchie/silva/commit/432804c)
+
 ## v0.2.0
 
 [v0.1.1...v0.2.0](https://github.com/Jannchie/silva/compare/v0.1.1...v0.2.0)
