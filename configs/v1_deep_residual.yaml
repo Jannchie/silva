@@ -1,0 +1,41 @@
+# SILVA v1 — deep residual head with noise-robust training.
+# Architecture: [512] projection + 6 residual blocks (13 linear layers).
+# Robustness: EMA smooths weights, loss truncation discards likely mislabels,
+#             mixup regularises the embedding space.
+model:
+  embedding_dim: 1152
+  dropout: 0.4
+  hidden_dims: [512]
+  n_residual_blocks: 6
+
+data:
+  manifest_path:
+    - data/manifest.parquet
+    - data/bad.parquet
+  num_workers: 0
+
+train:
+  batch_size: 256
+  grad_accum: 1
+  epochs: 60
+  lr_head: 1.0e-3
+  weight_decay: 0.08
+  warmup_ratio: 0.05
+  max_grad_norm: 1.0
+  use_pos_weight: true
+  ranking_weight: 1.0
+  soft_spearman_weight: 0.5
+  qwk_weight: 1.0
+  label_smoothing: 0.2
+  mixup_alpha: 0.3
+  ema_decay: 0.999                   # exponential moving average: smoother, flatter minima
+  loss_truncation: 0.05              # drop top-5% highest-loss samples (likely mislabelled)
+  mixed_precision: "no"
+  report_to: wandb
+  project_name: silva
+  run_name: deep-res-ema-trunc
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 20
+  seed: 42
+  output_dir: outputs/v1_deep_residual_v2

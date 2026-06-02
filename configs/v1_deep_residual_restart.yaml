@@ -1,0 +1,41 @@
+# SILVA v1 — deep residual + EMA + warm restarts.
+# Key change: cosine_restarts=3 keeps LR alive for EMA to absorb diverse snapshots.
+# LR bumped 1e-3 → 2e-3 to compensate for heavy regularisation.
+model:
+  embedding_dim: 1152
+  dropout: 0.4
+  hidden_dims: [512]
+  n_residual_blocks: 6
+
+data:
+  manifest_path:
+    - data/manifest.parquet
+    - data/bad.parquet
+  num_workers: 0
+
+train:
+  batch_size: 256
+  grad_accum: 1
+  epochs: 80
+  lr_head: 2.0e-3                    # higher LR: EMA + restarts need stronger signal
+  weight_decay: 0.08
+  warmup_ratio: 0.05
+  max_grad_norm: 1.0
+  use_pos_weight: true
+  ranking_weight: 1.0
+  soft_spearman_weight: 0.5
+  qwk_weight: 1.0
+  label_smoothing: 0.2
+  mixup_alpha: 0.3
+  ema_decay: 0.999
+  loss_truncation: 0.05
+  cosine_restarts: 3                 # 4 cosine cycles: LR resets 3 times
+  mixed_precision: "no"
+  report_to: wandb
+  project_name: silva
+  run_name: deep-res-ema-restart
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 30            # patient: restarts cause temporary dips
+  seed: 42
+  output_dir: outputs/v1_deep_residual_restart

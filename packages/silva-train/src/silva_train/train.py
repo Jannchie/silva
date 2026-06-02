@@ -7,11 +7,13 @@ import logging
 import math
 from pathlib import Path
 
+import copy
+
 import torch
 from accelerate import Accelerator
 from accelerate.utils import set_seed
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR
 from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
@@ -66,13 +68,18 @@ def train(config_path: str) -> dict[str, float]:
     val_loader = DataLoader(val_ds, batch_size=cfg.train.batch_size, shuffle=False, num_workers=cfg.data.num_workers)
 
     model = EmbeddingAestheticModel(
-        embedding_dim=cfg.model.embedding_dim, dropout=cfg.model.dropout, hidden_dims=cfg.model.hidden_dims
+        embedding_dim=cfg.model.embedding_dim, dropout=cfg.model.dropout, hidden_dims=cfg.model.hidden_dims,
+        n_residual_blocks=cfg.model.n_residual_blocks,
     )
     optimizer = AdamW(model.parameters(), lr=cfg.train.lr_head, weight_decay=cfg.train.weight_decay)
 
     steps_per_epoch = math.ceil(len(train_loader) / cfg.train.grad_accum)
     total_steps = steps_per_epoch * cfg.train.epochs
-    scheduler = cosine_warmup_scheduler(optimizer, round(total_steps * cfg.train.warmup_ratio), total_steps)
+    if cfg.train.cosine_restarts > 0:
+        t_0 = total_steps // (cfg.train.cosine_restarts + 1)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=max(1, t_0), T_mult=1)
+    else:
+        scheduler = cosine_warmup_scheduler(optimizer, round(total_steps * cfg.train.warmup_ratio), total_steps)
 
     pos_weight = None
     if cfg.train.use_pos_weight:
@@ -83,6 +90,11 @@ def train(config_path: str) -> dict[str, float]:
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, scheduler
     )
+
+    # EMA: shadow copy of model weights, initialized AFTER prepare() so tensors are on the right device
+    ema_state: dict[str, torch.Tensor] | None = None
+    if cfg.train.ema_decay > 0:
+        ema_state = {k: v.clone().float() for k, v in accelerator.unwrap_model(model).state_dict().items()}
 
     if log_with:
         flat_config = {f"{section}.{k}": v for section, values in cfg.model_dump().items() for k, v in values.items()}
@@ -101,15 +113,23 @@ def train(config_path: str) -> dict[str, float]:
         model.train()
         for batch in train_loader:
             with accelerator.accumulate(model):
-                out = model(batch["embedding"])
+                emb = batch["embedding"]
+                score = batch["score"].float()
+                if cfg.train.mixup_alpha > 0:
+                    lam = torch.distributions.Beta(cfg.train.mixup_alpha, cfg.train.mixup_alpha).sample().to(emb.device)
+                    perm = torch.randperm(emb.size(0), device=emb.device)
+                    emb = lam * emb + (1 - lam) * emb[perm]
+                    score = lam * score + (1 - lam) * score[perm]
+                out = model(emb)
                 loss = silva_loss(
                     out["logits"],
-                    batch["score"],
+                    score,
                     pos_weight=pos_weight,
                     ranking_weight=cfg.train.ranking_weight,
                     soft_spearman_weight=cfg.train.soft_spearman_weight,
                     qwk_weight=cfg.train.qwk_weight,
                     label_smoothing=cfg.train.label_smoothing,
+                    loss_truncation=cfg.train.loss_truncation,
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -118,12 +138,22 @@ def train(config_path: str) -> dict[str, float]:
                 if accelerator.sync_gradients:
                     scheduler.step()
                     global_step += 1
+                    if ema_state is not None:
+                        decay = cfg.train.ema_decay
+                        for k, v in accelerator.unwrap_model(model).state_dict().items():
+                            ema_state[k].mul_(decay).add_(v.float(), alpha=1 - decay)
                     if log_with:
                         accelerator.log({"train/loss": loss.item(), "train/lr": scheduler.get_last_lr()[0]}, step=global_step)
                 optimizer.zero_grad()
 
         if (epoch + 1) % cfg.train.eval_every != 0:
             continue
+
+        # Swap in EMA weights for evaluation, swap back after
+        raw_model = accelerator.unwrap_model(model)
+        if ema_state is not None:
+            live_state = {k: v.clone() for k, v in raw_model.state_dict().items()}
+            raw_model.load_state_dict({k: v.to(live_state[k].dtype) for k, v in ema_state.items()})
 
         metrics = run_eval(model, val_loader, accelerator)
         accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
@@ -136,13 +166,17 @@ def train(config_path: str) -> dict[str, float]:
             best_metrics = metrics
             patience = 0
             if accelerator.is_main_process:
-                save_checkpoint(output_dir, accelerator.unwrap_model(model).state_dict(), cfg.model_dump(), metrics)
+                save_checkpoint(output_dir, raw_model.state_dict(), cfg.model_dump(), metrics)
                 accelerator.print(f"  saved best.safetensors ({cfg.train.early_stop_metric}={current:.4f})")
         else:
             patience += 1
-            if patience >= cfg.train.early_stop_patience:
-                accelerator.print(f"early stopping at epoch {epoch + 1}")
-                break
+
+        if ema_state is not None:
+            raw_model.load_state_dict(live_state)
+
+        if patience >= cfg.train.early_stop_patience:
+            accelerator.print(f"early stopping at epoch {epoch + 1}")
+            break
 
     if log_with:
         accelerator.end_training()

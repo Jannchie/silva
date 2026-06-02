@@ -13,12 +13,13 @@ from silva.scoring import NUM_THRESHOLDS, ordinal_score_from_logits
 
 
 def make_ordinal_targets(scores: torch.Tensor) -> torch.Tensor:
-    """Map integer scores in {1..5} to binary threshold targets of shape ``[B, 4]``.
+    """Map scores to ordinal threshold targets of shape ``[B, 4]``.
 
-    Example: ``5 -> [1,1,1,1]``, ``3 -> [1,1,0,0]``, ``1 -> [0,0,0,0]``.
+    Integer: ``5 -> [1,1,1,1]``, ``3 -> [1,1,0,0]``, ``1 -> [0,0,0,0]``.
+    Continuous (mixup): ``2.7 -> [1.0, 0.7, 0.0, 0.0]`` — linearly interpolated.
     """
-    thresholds = torch.arange(1, 1 + NUM_THRESHOLDS, device=scores.device)
-    return (scores.unsqueeze(1) > thresholds.unsqueeze(0)).float()
+    thresholds = torch.arange(1, 1 + NUM_THRESHOLDS, device=scores.device, dtype=scores.dtype)
+    return (scores.unsqueeze(1) - thresholds.unsqueeze(0)).clamp(0, 1)
 
 
 def ordinal_loss(
@@ -133,7 +134,13 @@ def qwk_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
     b = probs.shape[0]
     ratings = torch.arange(1, 1 + n_classes, device=logits.device, dtype=probs.dtype)
     weights = (ratings.view(-1, 1) - ratings.view(1, -1)) ** 2 / (n_classes - 1) ** 2
-    onehot = F.one_hot(scores.long() - 1, n_classes).to(probs.dtype)  # [B, 5]
+    s = (scores.float() - 1).clamp(0, n_classes - 1 - 1e-6)
+    lo = s.long()
+    hi = (lo + 1).clamp(max=n_classes - 1)
+    w = (s - lo.float()).unsqueeze(1)
+    onehot = torch.zeros(b, n_classes, device=logits.device, dtype=probs.dtype)
+    onehot.scatter_(1, lo.unsqueeze(1), 1 - w)
+    onehot.scatter_add_(1, hi.unsqueeze(1), w)  # [B, 5] — soft for mixup, exact for integers
     observed = probs.t() @ onehot  # soft confusion [5, 5]
     expected = torch.outer(probs.sum(0), onehot.sum(0)) / b
     return (weights * observed).sum() / ((weights * expected).sum() + 1e-8)
@@ -147,19 +154,24 @@ def silva_loss(
     soft_spearman_weight: float = 0.0,
     qwk_weight: float = 0.0,
     label_smoothing: float = 0.0,
+    loss_truncation: float = 0.0,
 ) -> torch.Tensor:
     """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman + QWK.
 
-    No SmoothL1 regression: the personal 1~5 scale is deliberately non-equidistant
-    (1=very bad … 5=very nice), so pulling toward equidistant integer labels would
-    fight the ordinal head's self-adjusting thresholds. ``pos_weight`` (see
-    :func:`compute_pos_weight`) balances per-threshold imbalance. ``ranking_weight`` and
-    ``soft_spearman_weight`` sharpen the Spearman objective but are gap-blind;
-    ``qwk_weight`` adds :func:`qwk_loss` (squared-gap penalty) to crush large-gap blunders
-    and improve MAE calibration. Tuned recipe: ``ranking_weight=1.0,
-    soft_spearman_weight=0.5, qwk_weight=1.0``. See design §3.3 / §5.
+    ``loss_truncation`` (0..1) drops the top-k% highest per-sample ordinal losses before
+    averaging — those are likely mislabelled samples that would pull the model astray.
     """
-    loss = ordinal_loss(logits, scores, pos_weight=pos_weight, label_smoothing=label_smoothing)
+    if loss_truncation > 0:
+        per_sample = ordinal_loss(logits, scores, pos_weight=pos_weight, label_smoothing=label_smoothing, reduction="none")
+        per_sample = per_sample.mean(dim=1)  # [B, 4] -> [B]
+        keep = int(len(per_sample) * (1 - loss_truncation))
+        if keep > 0:
+            _, idx = per_sample.topk(keep, largest=False)
+            loss = per_sample[idx].mean()
+        else:
+            loss = per_sample.mean()
+    else:
+        loss = ordinal_loss(logits, scores, pos_weight=pos_weight, label_smoothing=label_smoothing)
     if ranking_weight > 0:
         loss = loss + ranking_weight * pairwise_ranking_loss(logits, scores)
     if soft_spearman_weight > 0:

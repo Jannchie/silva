@@ -33,6 +33,10 @@ class TrainConfig(BaseModel):
     soft_spearman_weight: float = 0.0  # weight on global soft-Spearman loss (ranking + calibration)
     qwk_weight: float = 0.0  # weight on quadratic-weighted-kappa loss (crushes large-gap blunders, improves MAE)
     label_smoothing: float = 0.0  # soften ordinal targets {0,1}->{eps,1-eps}; keeps latent finite, kills the 0~1 tail saturation
+    mixup_alpha: float = 0.0  # Beta(alpha,alpha) embedding mixup; 0 = disabled
+    ema_decay: float = 0.0  # exponential moving average of weights; 0 = disabled, typical 0.999
+    loss_truncation: float = 0.0  # drop the top-k% highest-loss samples per batch; 0 = disabled, typical 0.05
+    cosine_restarts: int = 0  # number of warm restarts; 0 = single cosine decay (default)
     mixed_precision: str = "no"  # accelerate mixed precision; head 极小用 fp32 数值更稳，bf16 无明显收益；"no" 同样适用 CPU
     report_to: str = "none"        # "wandb" to log to Weights & Biases, "none" to disable
     project_name: str = "silva"
