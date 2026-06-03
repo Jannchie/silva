@@ -5,9 +5,8 @@ from __future__ import annotations
 import argparse
 import logging
 import math
+from contextlib import nullcontext
 from pathlib import Path
-
-import copy
 
 import torch
 from accelerate import Accelerator
@@ -21,6 +20,7 @@ from silva.scoring import ordinal_score_from_logits
 from silva_train.checkpoint import save_checkpoint
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
+from silva_train.ema import EmaShadow
 from silva_train.losses import compute_pos_weight, silva_loss
 from silva_train.metrics import compute_metrics, is_improvement
 
@@ -91,10 +91,8 @@ def train(config_path: str) -> dict[str, float]:
         model, optimizer, train_loader, val_loader, scheduler
     )
 
-    # EMA: shadow copy of model weights, initialized AFTER prepare() so tensors are on the right device
-    ema_state: dict[str, torch.Tensor] | None = None
-    if cfg.train.ema_decay > 0:
-        ema_state = {k: v.clone().float() for k, v in accelerator.unwrap_model(model).state_dict().items()}
+    # EMA: shadow weights, initialized AFTER prepare() so tensors are on the right device
+    ema = EmaShadow(accelerator.unwrap_model(model), cfg.train.ema_decay) if cfg.train.ema_decay > 0 else None
 
     if log_with:
         flat_config = {f"{section}.{k}": v for section, values in cfg.model_dump().items() for k, v in values.items()}
@@ -138,10 +136,8 @@ def train(config_path: str) -> dict[str, float]:
                 if accelerator.sync_gradients:
                     scheduler.step()
                     global_step += 1
-                    if ema_state is not None:
-                        decay = cfg.train.ema_decay
-                        for k, v in accelerator.unwrap_model(model).state_dict().items():
-                            ema_state[k].mul_(decay).add_(v.float(), alpha=1 - decay)
+                    if ema is not None:
+                        ema.update(accelerator.unwrap_model(model))
                     if log_with:
                         accelerator.log({"train/loss": loss.item(), "train/lr": scheduler.get_last_lr()[0]}, step=global_step)
                 optimizer.zero_grad()
@@ -149,30 +145,24 @@ def train(config_path: str) -> dict[str, float]:
         if (epoch + 1) % cfg.train.eval_every != 0:
             continue
 
-        # Swap in EMA weights for evaluation, swap back after
+        # Evaluate (and checkpoint) on EMA weights when enabled; live weights restored on block exit.
         raw_model = accelerator.unwrap_model(model)
-        if ema_state is not None:
-            live_state = {k: v.clone() for k, v in raw_model.state_dict().items()}
-            raw_model.load_state_dict({k: v.to(live_state[k].dtype) for k, v in ema_state.items()})
+        with ema.swapped(raw_model) if ema is not None else nullcontext():
+            metrics = run_eval(model, val_loader, accelerator)
+            accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
+            if log_with:
+                accelerator.log({f"val/{k}": v for k, v in metrics.items()}, step=global_step)
 
-        metrics = run_eval(model, val_loader, accelerator)
-        accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
-        if log_with:
-            accelerator.log({f"val/{k}": v for k, v in metrics.items()}, step=global_step)
-
-        current = metrics[cfg.train.early_stop_metric]
-        if is_improvement(current, best_metric):
-            best_metric = current
-            best_metrics = metrics
-            patience = 0
-            if accelerator.is_main_process:
-                save_checkpoint(output_dir, raw_model.state_dict(), cfg.model_dump(), metrics)
-                accelerator.print(f"  saved best.safetensors ({cfg.train.early_stop_metric}={current:.4f})")
-        else:
-            patience += 1
-
-        if ema_state is not None:
-            raw_model.load_state_dict(live_state)
+            current = metrics[cfg.train.early_stop_metric]
+            if is_improvement(current, best_metric):
+                best_metric = current
+                best_metrics = metrics
+                patience = 0
+                if accelerator.is_main_process:
+                    save_checkpoint(output_dir, raw_model.state_dict(), cfg.model_dump(), metrics)
+                    accelerator.print(f"  saved best.safetensors ({cfg.train.early_stop_metric}={current:.4f})")
+            else:
+                patience += 1
 
         if patience >= cfg.train.early_stop_patience:
             accelerator.print(f"early stopping at epoch {epoch + 1}")
