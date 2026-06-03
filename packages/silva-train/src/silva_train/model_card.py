@@ -6,7 +6,10 @@ metrics from the checkpoint instead of hand-maintaining numbers in two places.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from silva_train.config import ModelConfig
 
 REPO_URL = "https://github.com/Jannchie/silva"
 
@@ -16,9 +19,9 @@ def _fmt(metrics: dict[str, Any], key: str) -> str:
     return f"{value:.4f}" if isinstance(value, (int, float)) else "—"
 
 
-def render_model_card(repo_id: str, backbone: str, model_cfg: dict[str, Any], metrics: dict[str, Any]) -> str:
-    hidden = model_cfg.get("hidden_dims", []) or "linear probe"
-    n_res = model_cfg.get("n_residual_blocks", 0)
+def render_model_card(repo_id: str, backbone: str, model_cfg: ModelConfig, metrics: dict[str, Any]) -> str:
+    hidden = model_cfg.hidden_dims or "linear probe"
+    n_res = model_cfg.n_residual_blocks
     trunk = f"MLP {hidden}" + (f" → {n_res}× residual block" if n_res else "")
     return f"""---
 library_name: silva

@@ -7,9 +7,8 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
-from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
-from silva_train.checkpoint import load_checkpoint
+from silva_train.checkpoint import load_model
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.metrics import bootstrap_ci, compute_metrics
@@ -19,19 +18,12 @@ def _collect_predictions(
     checkpoint: str,
     manifest_path: str | list[str],
     split: str,
-    embedding_dim: int,
-    dropout: float = 0.1,
-    hidden_dims: list[int] | None = None,
-    n_residual_blocks: int = 0,
+    *,
     batch_size: int = 256,
     num_workers: int = 4,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    state, _config, _metrics = load_checkpoint(checkpoint)
-
-    model = EmbeddingAestheticModel(embedding_dim=embedding_dim, dropout=dropout, hidden_dims=hidden_dims, n_residual_blocks=n_residual_blocks)
-    model.load_state_dict(state, strict=False)
-    model.to(device).eval()
+    model = load_model(checkpoint).to(device)
 
     loader = DataLoader(AestheticDataset(manifest_path, split), batch_size=batch_size, num_workers=num_workers)
 
@@ -49,14 +41,11 @@ def evaluate(
     checkpoint: str,
     manifest_path: str | list[str],
     split: str,
-    embedding_dim: int,
-    dropout: float = 0.1,
-    hidden_dims: list[int] | None = None,
-    n_residual_blocks: int = 0,
+    *,
     batch_size: int = 256,
     num_workers: int = 4,
 ) -> dict[str, float]:
-    preds, targets = _collect_predictions(checkpoint, manifest_path, split, embedding_dim, dropout, hidden_dims, n_residual_blocks, batch_size, num_workers)
+    preds, targets = _collect_predictions(checkpoint, manifest_path, split, batch_size=batch_size, num_workers=num_workers)
     return compute_metrics(preds, targets)
 
 
@@ -74,12 +63,8 @@ def main() -> None:
         args.checkpoint,
         cfg.data.manifest_path,
         args.split,
-        cfg.model.embedding_dim,
-        cfg.model.dropout,
-        cfg.model.hidden_dims,
-        cfg.model.n_residual_blocks,
-        cfg.train.batch_size,
-        cfg.data.num_workers,
+        batch_size=cfg.train.batch_size,
+        num_workers=cfg.data.num_workers,
     )
 
     if args.ci:

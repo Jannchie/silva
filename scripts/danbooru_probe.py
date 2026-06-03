@@ -28,10 +28,10 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoProcessor
 
-from silva.models.aesthetic import EmbeddingAestheticModel
+from silva_train.checkpoint import load_model
 
 BACKBONE = "google/siglip2-so400m-patch14-384"
-DEFAULT_CKPT = "outputs/v1_stage1_head/best.pt"
+DEFAULT_CKPT = "outputs/v1_stage1_head"
 API = "https://danbooru.donmai.us/posts.json"
 UA = "silva-aesthetic-probe/0.1 (research; contact jannchie@gmail.com)"
 # structural / semantic failure tags — SigLIP-visible, unlike pixel-quality tags
@@ -66,11 +66,7 @@ def main() -> None:
     proc = AutoProcessor.from_pretrained(BACKBONE)
     backbone = AutoModel.from_pretrained(BACKBONE).to(device).eval()
 
-    ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    mc = ck["config"]["model"]
-    head = EmbeddingAestheticModel(embedding_dim=mc["embedding_dim"], dropout=mc.get("dropout", 0.1), hidden_dims=mc.get("hidden_dims", []))
-    head.load_state_dict(ck["model"])
-    head.to(device).eval()
+    head = load_model(args.checkpoint).to(device)
 
     @torch.no_grad()
     def embed(img: Image.Image) -> np.ndarray:

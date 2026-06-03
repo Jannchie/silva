@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
 
 DEFAULT_CKPT = "outputs/v1_stage1_head"  # dir -> reads best.safetensors via load_checkpoint
@@ -31,14 +30,10 @@ def main() -> None:
     ap.add_argument("--top", type=int, default=25)
     args = ap.parse_args()
 
-    from silva_train.checkpoint import load_checkpoint
+    from silva_train.checkpoint import load_model
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    state, config, _ = load_checkpoint(args.checkpoint)
-    mc = config["model"]
-    model = EmbeddingAestheticModel(embedding_dim=mc["embedding_dim"], dropout=mc.get("dropout", 0.1), hidden_dims=mc.get("hidden_dims", []))
-    model.load_state_dict(state)
-    model.to(device).eval()
+    model = load_model(args.checkpoint).to(device)
 
     df = pd.read_parquet(args.manifest, columns=["post_id", "personal_score", "split", "embedding"])
     x = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device)

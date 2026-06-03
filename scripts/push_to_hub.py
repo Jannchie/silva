@@ -29,7 +29,8 @@ import torch
 
 from silva.models.aesthetic import N_CAL_KNOTS, EmbeddingAestheticModel
 from silva_train.calibration import build_calibration_lut
-from silva_train.checkpoint import load_checkpoint
+from silva_train.checkpoint import load_checkpoint, load_model
+from silva_train.config import ModelConfig
 from silva_train.model_card import render_model_card
 
 BACKBONE = "google/siglip2-so400m-patch14-384"  # must match the embeddings in the manifest (pictoria ai/siglip_embed.py)
@@ -65,17 +66,9 @@ def main() -> None:
     parser.add_argument("--commit-message", default="Upload SILVA aesthetic head")
     args = parser.parse_args()
 
-    state, config, metrics = load_checkpoint(args.checkpoint)
-    model_cfg = config["model"]
-
-    model = EmbeddingAestheticModel(
-        embedding_dim=model_cfg["embedding_dim"],
-        dropout=model_cfg.get("dropout", 0.1),
-        hidden_dims=model_cfg.get("hidden_dims", []),
-        n_residual_blocks=model_cfg.get("n_residual_blocks", 0),
-    )
-    model.load_state_dict(state, strict=False)  # calibration buffers default to zeros; filled by fit_calibration
-    model.eval()
+    _, config, metrics = load_checkpoint(args.checkpoint)
+    model_cfg = ModelConfig(**config["model"])
+    model = load_model(args.checkpoint)  # every arch param applied; calibration buffers (zeros) filled below
 
     # The checkpoint's stored metrics are the *val* best; the card reports the held-out
     # *test* split, so re-evaluate on test when the manifest is available — and bake the
@@ -86,11 +79,7 @@ def main() -> None:
     if all(Path(m).exists() for m in manifests):
         from silva_train.evaluate import evaluate
 
-        metrics = evaluate(
-            args.checkpoint, manifests, "test",
-            model_cfg["embedding_dim"], model_cfg.get("dropout", 0.1), model_cfg.get("hidden_dims", []),
-            model_cfg.get("n_residual_blocks", 0),
-        )
+        metrics = evaluate(args.checkpoint, manifests, "test")
         print(f"evaluated on test split of {manifests}: spearman={metrics.get('spearman'):.4f}")
         target = fit_calibration(model, manifests)
         tnorm = [round(t / sum(target), 3) for t in target]

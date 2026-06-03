@@ -1,6 +1,7 @@
 import torch
 
-from silva_train.checkpoint import load_checkpoint, save_checkpoint
+from silva.models.aesthetic import EmbeddingAestheticModel
+from silva_train.checkpoint import load_checkpoint, load_model, save_checkpoint
 
 
 def test_roundtrips_weights_config_and_metrics(tmp_path):
@@ -28,3 +29,24 @@ def test_load_accepts_the_weights_file_directly(tmp_path):
     state, _config, metrics = load_checkpoint(tmp_path / "best.safetensors")
     assert torch.equal(state["w"], torch.ones(3))
     assert metrics == {"spearman": 1.0}
+
+
+def test_load_model_rebuilds_residual_architecture(tmp_path):
+    # the architecture-defining params (incl. n_residual_blocks) must all be threaded
+    # through; a rebuild that drops n_residual_blocks loses the trunk.*.fc1/fc2 weights.
+    model = EmbeddingAestheticModel(embedding_dim=16, dropout=0.1, hidden_dims=[32], n_residual_blocks=2).eval()
+    config = {"model": {"embedding_dim": 16, "dropout": 0.1, "hidden_dims": [32], "n_residual_blocks": 2}, "train": {}}
+    save_checkpoint(tmp_path, model.state_dict(), config, {"spearman": 0.5})
+
+    loaded = load_model(tmp_path)
+
+    assert set(loaded.state_dict()) == set(model.state_dict())  # residual-block keys survive
+    x = torch.randn(4, 16)
+    assert torch.allclose(loaded(x)["logits"], model(x)["logits"], atol=1e-6)
+
+
+def test_load_model_returns_eval_mode_model(tmp_path):
+    model = EmbeddingAestheticModel(embedding_dim=8, hidden_dims=[16]).eval()
+    save_checkpoint(tmp_path, model.state_dict(), {"model": {"embedding_dim": 8, "hidden_dims": [16]}}, {})
+
+    assert load_model(tmp_path).training is False

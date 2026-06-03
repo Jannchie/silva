@@ -19,6 +19,9 @@ from typing import TYPE_CHECKING, Any
 
 from safetensors.torch import load_file, save_file
 
+from silva.models.aesthetic import EmbeddingAestheticModel
+from silva_train.config import ModelConfig
+
 if TYPE_CHECKING:
     import torch
 
@@ -41,3 +44,26 @@ def load_checkpoint(path: str | Path) -> tuple[dict[str, torch.Tensor], dict[str
     meta = weights.with_name(META_NAME)
     info = json.loads(meta.read_text(encoding="utf-8"))
     return load_file(str(weights)), info["config"], info["metrics"]
+
+
+def load_model(path: str | Path) -> EmbeddingAestheticModel:
+    """Rebuild the trained head from a checkpoint, in eval mode, on CPU.
+
+    The single seam for "checkpoint -> ready model": it threads EVERY architecture
+    param from the stored config — including ``n_residual_blocks`` — into the constructor,
+    so a rebuild can't silently drop the residual trunk (and load ``trunk.*`` weights into
+    a model that has no slots for them). Callers move the result to their device.
+
+    ``strict=False`` tolerates pre-calibration checkpoints whose ``state_dict`` predates the
+    calibration buffers; with the params applied in full there are no unexpected keys.
+    """
+    state, config, _metrics = load_checkpoint(path)
+    mc = ModelConfig(**config["model"])
+    model = EmbeddingAestheticModel(
+        embedding_dim=mc.embedding_dim,
+        dropout=mc.dropout,
+        hidden_dims=mc.hidden_dims,
+        n_residual_blocks=mc.n_residual_blocks,
+    )
+    model.load_state_dict(state, strict=False)
+    return model.eval()

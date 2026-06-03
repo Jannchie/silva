@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
 
 DB = r"E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite"
@@ -26,13 +25,9 @@ CKPT = "outputs/v1_stage1_head"  # dir -> reads best.safetensors via load_checkp
 def main() -> None:
     import sqlite3
 
-    from silva_train.checkpoint import load_checkpoint
+    from silva_train.checkpoint import load_model
 
-    state, config, _ = load_checkpoint(CKPT)
-    mc = config["model"]
-    model = EmbeddingAestheticModel(mc["embedding_dim"], mc.get("dropout", 0.1), mc.get("hidden_dims", []))
-    model.load_state_dict(state)
-    model.eval()
+    model = load_model(CKPT)
 
     df = pd.read_parquet("data/manifest.parquet", columns=["post_id", "personal_score", "split", "embedding"])
     x = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32)

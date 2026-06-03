@@ -27,12 +27,12 @@ import torch
 from PIL import Image, ImageFilter
 from transformers import AutoModel, AutoProcessor
 
-from silva.models.aesthetic import EmbeddingAestheticModel
+from silva_train.checkpoint import load_model
 
 BACKBONE = "google/siglip2-so400m-patch14-384"
 DEFAULT_DB = r"E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite"
 DEFAULT_IMAGES = r"E:/pictoria/server/illustration/images"
-DEFAULT_CKPT = "outputs/v1_stage1_head/best.pt"
+DEFAULT_CKPT = "outputs/v1_stage1_head"
 
 
 # --- degradations: name -> list of (label, fn(Image) -> Image) at increasing strength ---
@@ -88,14 +88,7 @@ def main() -> None:
     proc = AutoProcessor.from_pretrained(BACKBONE)
     backbone = AutoModel.from_pretrained(BACKBONE).to(device).eval()
 
-    # trained head (load straight from the .pt: keys = model/config/metrics)
-    ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    mc = ck["config"]["model"]
-    head = EmbeddingAestheticModel(
-        embedding_dim=mc["embedding_dim"], dropout=mc.get("dropout", 0.1), hidden_dims=mc.get("hidden_dims", []),
-    )
-    head.load_state_dict(ck["model"])
-    head.to(device).eval()
+    head = load_model(args.checkpoint).to(device)
 
     con = sqlite3.connect(args.db)
     root = Path(args.images_root)
