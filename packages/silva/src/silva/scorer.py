@@ -20,7 +20,9 @@ from __future__ import annotations
 from os import PathLike
 from typing import TYPE_CHECKING
 
-from silva.backbone import Embedder, score_images
+import torch
+
+from silva.backbone import Embedder
 from silva.models.aesthetic import EmbeddingAestheticModel
 
 if TYPE_CHECKING:
@@ -53,6 +55,7 @@ class SilvaScorer:
             self.head.to(self._embedder.device)
         return self._embedder
 
+    @torch.no_grad()
     def score(self, images: ImageInput | Sequence[ImageInput]) -> float | list[float]:
         """Score one image (path or ``PIL.Image``) or a list of them.
 
@@ -60,7 +63,9 @@ class SilvaScorer:
         """
         batch = isinstance(images, (list, tuple))
         items = list(images) if batch else [images]
-        scores = score_images([self._load(item) for item in items], self.head, self.embedder)
+        embedder = self.embedder
+        self.head.eval()
+        scores = [float(self.head(embedder.embed(self._load(item)))["calibrated_score"].item()) for item in items]
         return scores if batch else scores[0]
 
     @staticmethod

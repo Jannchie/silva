@@ -20,10 +20,7 @@ import torch
 BACKBONE = "google/siglip2-so400m-patch14-384"
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from PIL.Image import Image
-    from torch import nn
 
 
 class Embedder:
@@ -45,10 +42,3 @@ class Embedder:
         feats = self.model.get_image_features(pixel_values=inputs.pixel_values)
         # newer transformers wraps the result; the pooled [1, 1152] vector is .pooler_output
         return (feats.pooler_output if hasattr(feats, "pooler_output") else feats).float()
-
-
-@torch.no_grad()
-def score_images(images: Sequence[Image], head: nn.Module, embedder: Embedder) -> list[float]:
-    """Embed each image and run the head, returning the ``[0, 1]`` aesthetic score per image."""
-    head.eval()
-    return [float(head(embedder.embed(image))["calibrated_score"].item()) for image in images]
