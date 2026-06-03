@@ -19,8 +19,10 @@ members = [
 
 [manifest.dependency-groups]
 dev = [
+    { name = "pillow", specifier = ">=10" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff" },
+    { name = "transformers", specifier = ">=5.0" },
 ]
 
 [[package]]

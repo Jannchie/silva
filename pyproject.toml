@@ -13,7 +13,10 @@ url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff"]
+# transformers + pillow mirror the silva-scorer[backbone] extra: not runtime deps of
+# any workspace package (training runs off precomputed parquet embeddings), but the dev
+# env needs them so backbone.py / test_backbone.py resolve and run locally.
+dev = ["pytest>=8", "ruff", "transformers>=5.0", "pillow>=10"]
 
 [tool.ruff]
 exclude = [".venv", "wandb", "outputs", "scripts/sweep.py"]  # sweep.py: throwaway experiment harness
