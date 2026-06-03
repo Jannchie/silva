@@ -20,7 +20,8 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
-from torch.nn import functional as F
+
+from silva_train.neighbours import neighbour_score_mean
 
 
 def main() -> None:
@@ -33,20 +34,11 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     df = pd.read_parquet(args.manifest, columns=["post_id", "personal_score", "split", "embedding"])
-    emb = F.normalize(torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device), dim=1)
+    emb = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device)
     scores = torch.tensor(df["personal_score"].to_numpy(), dtype=torch.float32, device=device)
     n = emb.shape[0]
 
-    # batched cosine top-k (embeddings L2-normalised -> cosine = dot), excluding self
-    neigh_mean = torch.empty(n, device=device)
-    bs = 2048
-    for start in range(0, n, bs):
-        end = min(start + bs, n)
-        sims = emb[start:end] @ emb.T  # [b, n]
-        idx = torch.arange(start, end, device=device)
-        sims[torch.arange(end - start, device=device), idx] = -1e9  # drop self
-        top_idx = sims.topk(args.k, dim=1).indices
-        neigh_mean[start:end] = scores[top_idx].mean(dim=1)
+    neigh_mean = neighbour_score_mean(emb, scores, args.k)
 
     df["neigh_mean"] = neigh_mean.cpu().numpy()
     df["dev"] = df["personal_score"] - df["neigh_mean"]  # +: you rated higher than neighbours

@@ -23,7 +23,8 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
-from torch.nn import functional as F
+
+from silva_train.neighbours import nearest_neighbours
 
 
 def main() -> None:
@@ -34,24 +35,15 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     df = pd.read_parquet(args.manifest, columns=["post_id", "personal_score", "embedding"])
-    emb = F.normalize(torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device), dim=1)
+    emb = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device)
     scores = torch.tensor(df["personal_score"].to_numpy(), dtype=torch.float32, device=device)
     n = emb.shape[0]
 
-    nn_cos = torch.empty(n, device=device)
-    nn_idx = torch.empty(n, dtype=torch.long, device=device)
-    bs = 2048
-    for start in range(0, n, bs):
-        end = min(start + bs, n)
-        sims = emb[start:end] @ emb.T
-        sims[torch.arange(end - start, device=device), torch.arange(start, end, device=device)] = -1e9
-        vals, idx = sims.max(dim=1)  # single nearest neighbour
-        nn_cos[start:end] = vals
-        nn_idx[start:end] = idx
-
+    nn_idx_t, nn_cos_t = nearest_neighbours(emb, k=1)
+    nn_idx = nn_idx_t[:, 0]
     own = scores.cpu().numpy()
     nn_score = scores[nn_idx].cpu().numpy()
-    cos = nn_cos.cpu().numpy()
+    cos = nn_cos_t[:, 0].cpu().numpy()
     gap = np.abs(own - nn_score)
 
     print(f"images={n}   (gap = |your score - nearest-neighbour's score|)\n")

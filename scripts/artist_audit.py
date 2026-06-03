@@ -20,7 +20,8 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import torch
-from torch.nn import functional as F
+
+from silva_train.neighbours import neighbour_score_mean
 
 DB = r"E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite"
 
@@ -35,17 +36,10 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     df = pd.read_parquet(args.manifest, columns=["post_id", "personal_score", "embedding"])
-    emb = F.normalize(torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device), dim=1)
+    emb = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32, device=device)
     scores = torch.tensor(df["personal_score"].to_numpy(), dtype=torch.float32, device=device)
-    n = emb.shape[0]
 
-    neigh_mean = torch.empty(n, device=device)
-    bs = 2048
-    for start in range(0, n, bs):
-        end = min(start + bs, n)
-        sims = emb[start:end] @ emb.T
-        sims[torch.arange(end - start, device=device), torch.arange(start, end, device=device)] = -1e9
-        neigh_mean[start:end] = scores[sims.topk(args.k, dim=1).indices].mean(dim=1)
+    neigh_mean = neighbour_score_mean(emb, scores, args.k)
 
     df = df.drop(columns=["embedding"])
     df["neigh_mean"] = neigh_mean.cpu().numpy()
