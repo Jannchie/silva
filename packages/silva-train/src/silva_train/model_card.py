@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from silva_train.config import ModelConfig
 
 REPO_URL = "https://github.com/Jannchie/silva"
+DEMO_URL = "https://huggingface.co/spaces/Jannchie/silva-aesthetic-demo"
 
 
 def _fmt(metrics: dict[str, Any], key: str) -> str:
@@ -53,6 +54,8 @@ model-index:
 ---
 
 # SILVA — Personal Aesthetic Head
+
+**[▶ Try it in your browser]({DEMO_URL})** — upload an illustration, see this person's score live.
 
 Scores an illustration by **one specific person's** taste — not a universal quality
 model, so it won't match anyone else's preferences. Output is a single number in

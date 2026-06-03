@@ -16,3 +16,11 @@ def test_render_model_card_calls_a_bare_trunk_a_linear_probe():
     card = render_model_card("u/s", "backbone", cfg, {})
 
     assert "linear probe" in card
+
+
+def test_render_model_card_links_to_browser_demo():
+    cfg = ModelConfig(embedding_dim=1152, hidden_dims=[512], n_residual_blocks=6)
+    card = render_model_card("user/silva-aesthetic", "backbone", cfg, {})
+
+    assert "Try it in your browser" in card
+    assert "huggingface.co/spaces/Jannchie/silva-aesthetic-demo" in card

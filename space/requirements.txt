@@ -1,0 +1,6 @@
+# Install the inference library straight from the repo so the demo always matches
+# the architecture of the currently-published head (PyPI may lag a release behind).
+# The [backbone] extra pulls in transformers (>=5.0, CVE floor) + pillow; pip picks
+# the CPU torch wheel on a CPU Space automatically.
+silva-scorer[backbone] @ git+https://github.com/Jannchie/silva.git@main#subdirectory=packages/silva
+gradio
