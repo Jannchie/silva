@@ -216,3 +216,47 @@ def test_silva_loss_qwk_weight_zero_is_noop():
     scores = torch.tensor([1, 2, 3, 4, 5, 2])
     base = silva_loss(logits, scores, ranking_weight=1.0)
     assert silva_loss(logits, scores, ranking_weight=1.0, qwk_weight=0.0).item() == pytest.approx(base.item())
+
+
+def _hard_logits(preds: list[int]) -> torch.Tensor:
+    return torch.stack([torch.tensor([10.0 if k < c else -10.0 for k in range(1, 5)]) for c in preds])
+
+
+def test_qwk_loss_uniform_anchors_match_default():
+    logits = torch.randn(8, 4).sort(dim=1, descending=True).values
+    scores = torch.tensor([1, 2, 3, 4, 5, 1, 3, 5])
+
+    base = qwk_loss(logits, scores)
+    anchored = qwk_loss(logits, scores, anchors=torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0]))
+
+    assert anchored.item() == pytest.approx(base.item(), abs=1e-6)
+
+
+def test_qwk_loss_close_anchors_soften_confusion_between_them():
+    # anchors put 3 and 4 at half the usual distance: a 4->3 error must now cost less
+    # than a 3->2 error, while uniform anchors price both off-by-1 errors the same.
+    scores = torch.tensor([1, 2, 3, 4, 5])
+    anchors = torch.tensor([1.0, 2.0, 3.0, 3.5, 4.5])
+
+    err_4_as_3 = qwk_loss(_hard_logits([1, 2, 3, 3, 5]), scores, anchors=anchors)
+    err_3_as_2 = qwk_loss(_hard_logits([1, 2, 2, 4, 5]), scores, anchors=anchors)
+
+    assert err_4_as_3.item() < err_3_as_2.item()
+
+
+def test_qwk_loss_anchored_keeps_graph():
+    logits = torch.randn(5, 4).sort(dim=1, descending=True).values.requires_grad_(True)
+    loss = qwk_loss(logits, torch.tensor([1, 2, 3, 4, 5]), anchors=torch.tensor([1.0, 2.0, 3.0, 3.5, 4.5]))
+    loss.backward()
+    assert logits.grad is not None
+
+
+def test_silva_loss_threads_anchors_into_qwk():
+    logits = torch.randn(8, 4).sort(dim=1, descending=True).values
+    scores = torch.tensor([1, 2, 3, 4, 5, 1, 3, 5])
+    anchors = torch.tensor([1.0, 2.0, 3.0, 3.6, 4.6])
+
+    combined = silva_loss(logits, scores, qwk_weight=1.0, anchors=anchors)
+    expected = silva_loss(logits, scores, qwk_weight=0.0) + qwk_loss(logits, scores, anchors=anchors)
+
+    assert combined.item() == pytest.approx(expected.item(), abs=1e-5)

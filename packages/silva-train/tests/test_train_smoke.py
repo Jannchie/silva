@@ -62,6 +62,53 @@ def test_training_closed_loop(tmp_path):
     assert "spearman" in metrics
 
 
+def test_training_closed_loop_with_anchored_qwk(tmp_path):
+    # exercises the anchors path: explicit list + qwk term, and the "auto" estimator
+    from silva_train.train import train
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(24):
+        score = (i % 5) + 1
+        emb = rng.standard_normal(16)
+        emb[0] += score * 3.0
+        rows.append({"post_id": i, "embedding": emb.tolist(), "personal_score": score, "split": "train" if i < 18 else "val"})
+    manifest = tmp_path / "manifest.parquet"
+    write_manifest(pd.DataFrame(rows), manifest)
+
+    base_train = {
+        "batch_size": 4,
+        "epochs": 2,
+        "lr_head": 1e-2,
+        "warmup_ratio": 0.0,
+        "use_pos_weight": True,
+        "mixed_precision": "no",
+        "eval_every": 1,
+        "early_stop_patience": 3,
+        "seed": 0,
+        "qwk_weight": 1.0,
+    }
+    for name, anchors in (("explicit", [1.0, 2.0, 3.0, 3.5, 4.5]), ("auto", "auto")):
+        out_dir = tmp_path / f"out_{name}"
+        cfg = {
+            "model": {"embedding_dim": 16, "dropout": 0.0},
+            "data": {"manifest_path": str(manifest), "num_workers": 0},
+            "train": {**base_train, "score_anchors": anchors, "output_dir": str(out_dir)},
+        }
+        cfg_path = tmp_path / f"cfg_{name}.yaml"
+        cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+        # guard against pydantic silently dropping an unknown key (the config must OWN this field)
+        from silva_train.config import Config
+
+        assert Config.from_yaml(cfg_path).train.score_anchors == anchors, name
+
+        metrics = train(str(cfg_path))
+
+        assert (out_dir / "best.safetensors").exists(), name
+        assert "spearman" in metrics, name
+
+
 def test_training_closed_loop_with_ema(tmp_path):
     # exercises the EMA path: update each step, swap shadow weights in for eval + save
     from silva_train.train import train

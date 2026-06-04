@@ -8,6 +8,7 @@ import math
 from contextlib import nullcontext
 from pathlib import Path
 
+import numpy as np
 import torch
 from accelerate import Accelerator
 from accelerate.utils import set_seed
@@ -17,6 +18,7 @@ from torch.utils.data import DataLoader
 
 from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
+from silva_train.anchors import anchors_from_neighbours
 from silva_train.checkpoint import save_checkpoint
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
@@ -87,6 +89,19 @@ def train(config_path: str) -> dict[str, float]:
         pos_weight = compute_pos_weight(train_scores).to(accelerator.device)
         accelerator.print(f"pos_weight (per threshold >1..>4): {pos_weight.tolist()}")
 
+    # Non-uniform category anchors for QWK: "auto" re-estimates the rater's perceptual
+    # spacing from the train split each run (kNN pseudo-retest), so the spacing tracks
+    # the labels as relabel rounds move them.
+    anchors = None
+    if cfg.train.score_anchors == "auto":
+        emb_t = torch.tensor(np.stack(train_ds.rows["embedding"].to_numpy()), dtype=torch.float32, device=accelerator.device)
+        sc_t = torch.tensor(train_ds.rows["personal_score"].to_numpy(), dtype=torch.float32, device=accelerator.device)
+        anchors = torch.tensor(anchors_from_neighbours(emb_t, sc_t))
+        del emb_t, sc_t
+        accelerator.print(f"score_anchors (auto, kNN pseudo-retest): {[round(float(a), 3) for a in anchors]}")
+    elif cfg.train.score_anchors is not None:
+        anchors = torch.tensor([float(a) for a in cfg.train.score_anchors])
+
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, scheduler
     )
@@ -128,6 +143,7 @@ def train(config_path: str) -> dict[str, float]:
                     qwk_weight=cfg.train.qwk_weight,
                     label_smoothing=cfg.train.label_smoothing,
                     loss_truncation=cfg.train.loss_truncation,
+                    anchors=anchors,
                 )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:

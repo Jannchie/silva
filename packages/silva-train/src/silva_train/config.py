@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -32,6 +33,7 @@ class TrainConfig(BaseModel):
     ranking_weight: float = 0.0  # weight on pairwise ranking loss (directly optimises Spearman)
     soft_spearman_weight: float = 0.0  # weight on global soft-Spearman loss (ranking + calibration)
     qwk_weight: float = 0.0  # weight on quadratic-weighted-kappa loss (crushes large-gap blunders, improves MAE)
+    score_anchors: list[float] | Literal["auto"] | None = None  # non-uniform QWK category positions; "auto" = kNN pseudo-retest estimate
     label_smoothing: float = 0.0  # soften ordinal targets {0,1}->{eps,1-eps}; keeps latent finite, kills the 0~1 tail saturation
     mixup_alpha: float = 0.0  # Beta(alpha,alpha) embedding mixup; 0 = disabled
     ema_decay: float = 0.0  # exponential moving average of weights; 0 = disabled, typical 0.999

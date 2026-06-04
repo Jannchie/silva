@@ -1,0 +1,38 @@
+# SILVA v1 — stage1 + anchored QWK: price errors by the rater's PERCEPTUAL spacing.
+# score_anchors auto = kNN pseudo-retest at train start ([1.0, 3.04, 3.88, 4.28, 5.0] on
+# the 2026-06 manifest; cross-validated by blind-retest Thurstone within ~15%). The fuzzy
+# 3/4 boundary costs ~1/4 of a uniform step, so the model stops fighting coin flips there.
+model:
+  embedding_dim: 1152
+  dropout: 0.3
+  hidden_dims: [1024, 512, 256]
+
+data:
+  manifest_path:
+    - data/manifest.parquet
+    - data/bad.parquet
+  num_workers: 0
+
+train:
+  batch_size: 256
+  grad_accum: 1
+  epochs: 40
+  lr_head: 1.5e-3
+  weight_decay: 0.05
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  use_pos_weight: true
+  ranking_weight: 1.0
+  soft_spearman_weight: 0.5
+  qwk_weight: 1.0
+  score_anchors: auto               # <- the only change vs v1_stage1_head.yaml
+  label_smoothing: 0.2
+  mixed_precision: "no"
+  report_to: none
+  project_name: silva
+  run_name: anchored-qwk
+  eval_every: 1
+  early_stop_metric: spearman
+  early_stop_patience: 40
+  seed: 42
+  output_dir: outputs/v1_anchored_qwk

@@ -122,18 +122,27 @@ def ordinal_to_probs(logits: torch.Tensor) -> torch.Tensor:
     return torch.cat([p_first, p_mid, p_last], dim=1).clamp_min(1e-6)
 
 
-def qwk_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+def qwk_loss(logits: torch.Tensor, scores: torch.Tensor, anchors: torch.Tensor | None = None) -> torch.Tensor:
     """Differentiable quadratic-weighted-kappa loss (``1 - kappa``) over the batch.
 
     Weights each prediction error by the SQUARE of the rating gap, so a 4-off mistake
     costs ~16x a 1-off one. Unlike ordinal BCE (linear in the gap) and the ranking terms
     (gap-blind), this directly suppresses large-gap blunders (you=4 / model=1).
+
+    ``anchors`` ``[5]`` (monotone increasing) places the categories at non-uniform latent
+    positions, so confusions between perceptually-close grades (the fuzzy 3/4 boundary)
+    cost ``(a_i - a_j)^2`` instead of a full unit step. ``None`` keeps the classic
+    equidistant weighting. Category *identity* (the soft one-hot) is untouched — anchors
+    only reprice the errors.
     """
     n_classes = NUM_THRESHOLDS + 1
     probs = ordinal_to_probs(logits)  # [B, 5]
     b = probs.shape[0]
-    ratings = torch.arange(1, 1 + n_classes, device=logits.device, dtype=probs.dtype)
-    weights = (ratings.view(-1, 1) - ratings.view(1, -1)) ** 2 / (n_classes - 1) ** 2
+    if anchors is None:
+        ratings = torch.arange(1, 1 + n_classes, device=logits.device, dtype=probs.dtype)
+    else:
+        ratings = anchors.to(device=logits.device, dtype=probs.dtype)
+    weights = (ratings.view(-1, 1) - ratings.view(1, -1)) ** 2 / (ratings[-1] - ratings[0]) ** 2
     s = (scores.float() - 1).clamp(0, n_classes - 1 - 1e-6)
     lo = s.long()
     hi = (lo + 1).clamp(max=n_classes - 1)
@@ -155,11 +164,13 @@ def silva_loss(
     qwk_weight: float = 0.0,
     label_smoothing: float = 0.0,
     loss_truncation: float = 0.0,
+    anchors: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Personal loss: ordinal BCE + optional ``pos_weight`` + ranking + soft-Spearman + QWK.
 
     ``loss_truncation`` (0..1) drops the top-k% highest per-sample ordinal losses before
     averaging — those are likely mislabelled samples that would pull the model astray.
+    ``anchors`` reprices QWK errors by non-uniform category spacing (see :func:`qwk_loss`).
     """
     if loss_truncation > 0:
         per_sample = ordinal_loss(logits, scores, pos_weight=pos_weight, label_smoothing=label_smoothing, reduction="none")
@@ -177,5 +188,5 @@ def silva_loss(
     if soft_spearman_weight > 0:
         loss = loss + soft_spearman_weight * soft_spearman_loss(logits, scores)
     if qwk_weight > 0:
-        loss = loss + qwk_weight * qwk_loss(logits, scores)
+        loss = loss + qwk_weight * qwk_loss(logits, scores, anchors=anchors)
     return loss
