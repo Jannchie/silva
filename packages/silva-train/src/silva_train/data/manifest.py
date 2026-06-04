@@ -82,6 +82,25 @@ def assign_splits(
     return labels
 
 
+def assign_folds(
+    keys: Sequence[Hashable],
+    n_folds: int,
+    seed: int = 42,
+) -> list[int]:
+    """Assign a CV fold per row, keyed like :func:`assign_splits` so folds never drift.
+
+    Each key maps independently to ``[0, n_folds)`` via the same deterministic seeded
+    hash: re-exports and relabels keep every existing row in its fold, so out-of-fold
+    predictions stay comparable across manifest updates. Balance is approximate for the
+    same reason split ratios are (per-key hashing has no global view).
+
+    The key domain is salted (``fold:``) so folds are independent of splits even at the
+    same seed — otherwise the train split occupies one band of the hash line and the
+    last fold collapses to a sliver of it.
+    """
+    return [int(_split_point(f"fold:{key}", seed) * n_folds) for key in keys]
+
+
 def build_manifest(
     embeddings: Sequence[Sequence[float]],
     scores: Sequence[int],
