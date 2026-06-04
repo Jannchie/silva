@@ -27,3 +27,6 @@ hub_export_readme.md
 
 # Label-review thumbnails (scripts/sample_review.py)
 /review_out/
+
+# Generated relabel/blind review pages (scripts/review_page.py)
+/review_*.html
