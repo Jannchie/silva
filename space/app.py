@@ -7,7 +7,9 @@ lazily on the first ``score`` call, so the first request after a cold start is s
 (tens of seconds on a free CPU Space) and every request after it is fast.
 
 The head is calibrated on a single rater's 1-5 labels — one consistent taste,
-not a universal quality measure.
+not a universal quality measure. An optional domain gate (``domain_reference.safetensors``
+published next to the head, see ``scripts/fit_domain.py``) flags inputs far from anything
+the model was trained on — photos, 3D, memes — where the score is not meaningful.
 """
 
 from __future__ import annotations
@@ -15,6 +17,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import gradio as gr
+import torch
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 
 from silva import SilvaScorer
 
@@ -28,17 +33,47 @@ REPO_ID = "Jannchie/silva-aesthetic"
 scorer = SilvaScorer.from_pretrained(REPO_ID)
 
 
+def _load_gate() -> dict | None:
+    """Domain gate: subsampled training embeddings + calibrated kNN-distance ceiling.
+
+    Mirrors silva_train.coverage.DomainReference inference (the Space installs only the
+    silva-scorer SDK). Missing artifact -> gate off, the demo still scores everything.
+    """
+    try:
+        data = load_file(hf_hub_download(REPO_ID, "domain_reference.safetensors"))
+    except Exception:
+        return None
+    emb = torch.nn.functional.normalize(data["embeddings"].float(), dim=1)
+    return {"emb": emb, "k": int(data["k"][0]), "threshold": float(data["threshold"][0])}
+
+
+gate = _load_gate()
+
+
 def score_image(image: Image | None) -> str:
     """Score one PIL image and render the result card. Returns HTML."""
     if image is None:
         return _result_html(None)
-    score = float(scorer.score(image))  # calibrated_score in [0, 1]
-    return _result_html(score)
+    with torch.no_grad():
+        emb = scorer.embedder.embed(image)  # [1, 1152]; embedder pins the head to its device
+        score = float(scorer.head(emb)["calibrated_score"].item())
+        out_of_domain = False
+        if gate is not None:
+            q = torch.nn.functional.normalize(emb.float().cpu(), dim=1)
+            cos, _ = (q @ gate["emb"].T).topk(gate["k"], dim=1)
+            out_of_domain = float(1.0 - cos.mean()) > gate["threshold"]
+    return _result_html(score, out_of_domain=out_of_domain)
 
 
-def _result_html(score: float | None) -> str:
+def _result_html(score: float | None, out_of_domain: bool = False) -> str:
     if score is None:
         return "<div class='silva-card silva-empty'>No image scored yet.</div>"
+    warning = ""
+    if out_of_domain:
+        warning = (
+            "<div class='silva-warning'>Out of scope — this image sits far from the"
+            " illustrations the model was trained on, so the score is unreliable.</div>"
+        )
     pct = round(score * 100)
     # Friendly 1–5 estimate. calibrated_score is aligned to the 1–5 label
     # distribution, so a linear map back is a reasonable display approximation.
@@ -49,6 +84,7 @@ def _result_html(score: float | None) -> str:
       <div class="silva-score">{score:.3f}</div>
       <div class="silva-track"><div class="silva-fill" style="width:{pct}%"></div></div>
       <div class="silva-scale"><span>0</span><span class="silva-stars">&asymp; {stars:.1f} / 5</span><span>1</span></div>
+      {warning}
     </div>
     """
 
@@ -121,6 +157,16 @@ CSS = """
   font-variant-numeric: tabular-nums;
 }
 .silva-stars { font-size: 0.88rem; }
+.silva-warning {
+  margin-top: 18px;
+  padding: 10px 14px;
+  border: 1px solid #d9b88a;
+  border-radius: 4px;
+  background: #f6ead7;
+  color: #7a5b2b;
+  font-size: 0.85rem;
+  text-align: left;
+}
 @keyframes silva-rise {
   from { opacity: 0; transform: translateY(6px); }
 }
@@ -137,8 +183,9 @@ an ordinal-regression head reading a frozen
 [SigLIP2](https://huggingface.co/google/siglip2-so400m-patch14-384) embedding.
 
 The head is calibrated on a single rater's 1–5 labels, so read the score as one
-consistent taste rather than a universal measure of quality. The first score after
-a cold start takes a while; later ones are quick.
+consistent taste rather than a universal measure of quality. Inputs far from the
+training distribution (photos, 3D, memes) are flagged as out of scope instead of
+trusted. The first score after a cold start takes a while; later ones are quick.
 """
 
 FOOTER = """
