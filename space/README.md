@@ -1,8 +1,8 @@
 ---
 title: SILVA Aesthetic Scorer
-emoji: 🎨
-colorFrom: indigo
-colorTo: purple
+emoji: 🖼️
+colorFrom: gray
+colorTo: yellow
 sdk: gradio
 app_file: app.py
 pinned: false
@@ -15,14 +15,12 @@ tags:
   - ordinal-regression
 ---
 
-# SILVA — Personal Aesthetic Scorer
+# SILVA — Aesthetic Scorer
 
-Upload an illustration and see the score that **one specific person's** taste model
-gives it. Output is a single number in `[0, 1]` — higher means *more to this person's
-liking*.
+Upload an illustration and get an aesthetic score in `[0, 1]`.
 
-> ⚠️ This is **not** a universal quality model. It was fit on one person's private
-> 1–5 ratings, so the score reflects *their* preferences and won't match anyone else's.
+The head is calibrated on a single rater's 1–5 labels, so read the score as one
+consistent taste rather than a universal measure of quality.
 
 ## How it works
 
