@@ -153,11 +153,18 @@ Pydantic entity 与表一一对应（`AbsoluteAnnotation` / `PairwiseAnnotation`
 
 ---
 
-## 6. 标注队列
+## 6. 出题：流式采样为默认，队列仅用于固定批次
 
-队列 = "接下来标什么"，由 **pictoria 内置生成器**自动生成（依赖方向：silva → pictoria 单向，
-pictoria 不依赖任何 silva 侧脚本）。采样所需信息 pictoria DB 全有：`posts.score`（旧手工分）、
-`post_vectors_siglip2`（embedding）、`post_aesthetic_scores`（silva 回填分）、标注事件表（排除已标）。
+**日常标注无队列**：标注页选好维度/档位/策略直接开始，服务端按需采样下一张/下一对
+（`GET /annotations/sample-absolute` / `sample-pairwise`），已标过的图自动排除。
+打开即标、标到不想标，无批次管理负担。
+
+**队列只服务固定集合场景**：形态对比实验（同一批图标三遍）和 intra-rater 复测
+（同一批图隔期再标）必须锁定一组图——这是队列唯一不可替代的用途，UI 中折叠为次要功能。
+
+采样由 **pictoria 内置**（依赖方向：silva → pictoria 单向，pictoria 不依赖任何 silva 侧脚本）。
+采样所需信息 pictoria DB 全有：`posts.score`（旧手工分）、`post_vectors_siglip2`（embedding）、
+`post_aesthetic_scores`（silva 回填分）、标注事件表（排除已标）。
 
 生成策略（P0 实现前两个）：
 
