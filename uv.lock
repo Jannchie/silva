@@ -19,7 +19,7 @@ members = [
 
 [manifest.dependency-groups]
 dev = [
-    { name = "pandm", specifier = ">=0.8" },
+    { name = "pandm", specifier = ">=0.9.0" },
     { name = "pillow", specifier = ">=10" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff" },
@@ -992,7 +992,7 @@ wheels = [
 
 [[package]]
 name = "pandm"
-version = "0.9.0"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1003,9 +1003,9 @@ dependencies = [
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/ea/e6a7dcb6cc0b839ade46bbb9f0e046eba15121f69574fe10d57e3f6c76d5/pandm-0.9.0.tar.gz", hash = "sha256:666ebef608918cae6810e8dcec5962d4a954da657e86d7412491393c8c01e1e6", size = 866798, upload-time = "2026-06-08T11:56:55.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/eb/e2b64c1e2c56f1965e189ad3162fa46b9bf22865939220e96679146f74aa/pandm-0.11.0.tar.gz", hash = "sha256:5336c42ca6076c1661d21102a7489ed7069cc7880a50bd88dbb19859356f1eb2", size = 879413, upload-time = "2026-06-09T16:14:28.379Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/47/05ca5da74aa168986b4b018378585a4ed37394522e6f4185484ee7bad6b6/pandm-0.9.0-py3-none-any.whl", hash = "sha256:cf517eaeb8b96bfbec765416d2734e0789ea4e7181171d230ea18ff190a927c0", size = 458612, upload-time = "2026-06-08T11:56:54.074Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/7c/13392cecff1df7d440d74554251e6f15b9894c04de328ecffab383a78981/pandm-0.11.0-py3-none-any.whl", hash = "sha256:4ef36e6a05a62c42c4fbfcaec3e775a4622ae81071b462bea51ac95379c58050", size = 463165, upload-time = "2026-06-09T16:14:26.68Z" },
 ]
 
 [[package]]

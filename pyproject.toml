@@ -17,7 +17,7 @@ explicit = true
 # silva-train[pandm] extra: not runtime deps of any workspace package (training runs off
 # precomputed parquet embeddings), but the dev env needs them so backbone.py /
 # test_backbone.py and tracking.py / test_tracking.py resolve and run locally.
-dev = ["pytest>=8", "ruff", "transformers>=5.0", "pillow>=10", "pandm>=0.8"]
+dev = ["pytest>=8", "ruff", "transformers>=5.0", "pillow>=10", "pandm>=0.9.0"]
 
 [tool.ruff]
 exclude = [".venv", "outputs", "scripts/sweep.py"]  # sweep.py: throwaway experiment harness
