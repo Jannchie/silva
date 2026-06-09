@@ -160,15 +160,20 @@ def test_training_closed_loop_reports_to_pandm(tmp_path, monkeypatch):
         keys = {k for (k,) in con.execute("SELECT DISTINCT key FROM metrics")}
         runs = list(con.execute("SELECT project, name, status FROM runs"))
         (config_json,) = con.execute("SELECT config FROM runs").fetchone()
+        (summary_json,) = con.execute("SELECT summary FROM runs").fetchone()
     finally:
         con.close()
     config = json.loads(config_json)
+    summary = json.loads(summary_json)
     assert {"train/loss", "train/lr"} <= keys  # per-step training metrics logged
     assert any(k.startswith("val/") for k in keys)  # eval metrics logged
     assert {"train/spearman", "gap/spearman", "val/biggap"} <= keys  # train-val gap + biggap monitoring
     # pos_weight is a run-start derived constant -> recorded as config, never a single-point metric
     assert not any(k.startswith("pos_weight/") for k in keys)
     assert {"pos_weight/>1", "pos_weight/>2", "pos_weight/>3", "pos_weight/>4"} <= set(config)
+    # the chosen checkpoint's self-consistent row is pinned as the terminal summary (not on the curves)
+    assert "best/epoch" in summary and "best/spearman" in summary
+    assert not any(k.startswith("best/") for k in keys)
     assert ("silva-smoke", "e2e", "finished") in runs  # run named via build_log_with + finished cleanly
 
 

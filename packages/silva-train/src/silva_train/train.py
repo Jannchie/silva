@@ -24,7 +24,7 @@ from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
 from silva_train.ema import EmaShadow
 from silva_train.losses import compute_pos_weight, silva_loss
-from silva_train.metrics import compute_metrics, is_improvement
+from silva_train.metrics import bootstrap_ci, compute_metrics, is_improvement
 from silva_train.tracking import build_log_with
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -44,7 +44,9 @@ def cosine_warmup_scheduler(optimizer: torch.optim.Optimizer, warmup_steps: int,
 
 
 @torch.no_grad()
-def run_eval(model: torch.nn.Module, loader: DataLoader, accelerator: Accelerator) -> dict[str, float]:
+def run_eval(
+    model: torch.nn.Module, loader: DataLoader, accelerator: Accelerator
+) -> tuple[dict[str, float], torch.Tensor, torch.Tensor]:
     model.eval()
     preds: list[torch.Tensor] = []
     targets: list[torch.Tensor] = []
@@ -52,7 +54,31 @@ def run_eval(model: torch.nn.Module, loader: DataLoader, accelerator: Accelerato
         out = model(batch["embedding"])
         preds.append(accelerator.gather_for_metrics(ordinal_score_from_logits(out["logits"])).float().cpu())
         targets.append(accelerator.gather_for_metrics(batch["score"]).float().cpu())
-    return compute_metrics(torch.cat(preds), torch.cat(targets))
+    p, t = torch.cat(preds), torch.cat(targets)
+    return compute_metrics(p, t), p, t
+
+
+def _pin_best_summary(
+    accelerator: Accelerator, preds: torch.Tensor, targets: torch.Tensor, epoch: int
+) -> None:
+    """Pin the chosen checkpoint's self-consistent metric row + bootstrap CIs as the
+    run's terminal verdict (pandm summary). Unlike the per-key stats max/min on the
+    curves — which mix values from different epochs — this is the one model actually
+    saved. Flat keys (best/spearman, best/spearman_lo/_hi) match pandm's scalar store;
+    non-finite CIs (tiny val sets) are dropped. Best-effort: never breaks training."""
+    try:
+        run = accelerator.get_tracker("pandm", unwrap=True)
+    except Exception:  # no pandm tracker (report_to != pandm) -> nothing to pin
+        return
+    if not hasattr(run, "summary"):
+        return
+    finite = {
+        key: v
+        for k, m in bootstrap_ci(preds, targets).items()
+        for key, v in ((f"best/{k}", m.value), (f"best/{k}_lo", m.lo), (f"best/{k}_hi", m.hi))
+        if math.isfinite(v)
+    }
+    run.summary({"best/epoch": float(epoch), **finite})
 
 
 def train(config_path: str) -> dict[str, float]:
@@ -129,6 +155,8 @@ def train(config_path: str) -> dict[str, float]:
     output_dir.mkdir(parents=True, exist_ok=True)
     best_metric = -math.inf
     best_metrics: dict[str, float] = {}
+    best_epoch = 0
+    best_val: tuple[torch.Tensor, torch.Tensor] | None = None  # (preds, targets) of the chosen checkpoint, for the terminal summary
     patience = 0
 
     global_step = 0
@@ -174,8 +202,8 @@ def train(config_path: str) -> dict[str, float]:
         # Evaluate (and checkpoint) on EMA weights when enabled; live weights restored on block exit.
         raw_model = accelerator.unwrap_model(model)
         with ema.swapped(raw_model) if ema is not None else nullcontext():
-            metrics = run_eval(model, val_loader, accelerator)
-            train_metrics = run_eval(model, train_eval_loader, accelerator)
+            metrics, val_preds, val_targets = run_eval(model, val_loader, accelerator)
+            train_metrics, _, _ = run_eval(model, train_eval_loader, accelerator)
             gap = {k: train_metrics[k] - metrics[k] for k in metrics}
             accelerator.print(
                 f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items())
@@ -190,6 +218,8 @@ def train(config_path: str) -> dict[str, float]:
             if is_improvement(current, best_metric):
                 best_metric = current
                 best_metrics = metrics
+                best_epoch = epoch + 1
+                best_val = (val_preds, val_targets)
                 patience = 0
                 if accelerator.is_main_process:
                     save_checkpoint(output_dir, raw_model.state_dict(), cfg.model_dump(), metrics)
@@ -202,6 +232,8 @@ def train(config_path: str) -> dict[str, float]:
             break
 
     if log_with:
+        if best_val is not None and accelerator.is_main_process:
+            _pin_best_summary(accelerator, best_val[0], best_val[1], best_epoch)
         accelerator.end_training()
     return best_metrics
 
