@@ -5,6 +5,7 @@ import numpy as np
 from silva_train.metrics import (
     MetricCI,
     _wilson_ci,
+    big_gap_rate,
     bootstrap_ci,
     compute_metrics,
     is_improvement,
@@ -59,10 +60,25 @@ def test_top_k_precision_reversed_ranking():
     assert top_k_precision(preds, targets, frac=0.2) == 0.0
 
 
+def test_big_gap_rate_no_gaps():
+    assert big_gap_rate([1, 2, 3, 4], [1, 2, 3, 4]) == 0.0
+
+
+def test_big_gap_rate_counts_only_gaps_at_or_above_threshold():
+    # diffs: 0, 1, 2, 3 -> two of four are >= 2
+    assert big_gap_rate([1, 2, 1, 1], [1, 3, 3, 4]) == 0.5
+
+
+def test_big_gap_rate_uses_continuous_prediction():
+    # 1.6 vs 4 is a 2.4 gap (would be a 2.0 gap if rounded to 2) -> still counts
+    assert big_gap_rate([1.6], [4]) == 1.0
+
+
 def test_compute_metrics_keys():
     m = compute_metrics([1, 2, 3, 4], [1, 2, 3, 4])
-    assert {"mae", "rmse", "pearson", "spearman", "qwk", "top_1pct", "top_5pct"} <= set(m)
+    assert {"mae", "rmse", "pearson", "spearman", "qwk", "top_1pct", "top_5pct", "biggap"} <= set(m)
     assert m["spearman"] == 1.0
+    assert m["biggap"] == 0.0
 
 
 def test_is_improvement_better():

@@ -113,6 +113,7 @@ def test_training_closed_loop_with_anchored_qwk(tmp_path):
 
 def test_training_closed_loop_reports_to_pandm(tmp_path, monkeypatch):
     # the accelerate -> PandmTracker seam: report_to "pandm" must flow real metrics into a pandm run
+    import json
     import sqlite3
 
     from silva_train.train import train
@@ -158,10 +159,16 @@ def test_training_closed_loop_reports_to_pandm(tmp_path, monkeypatch):
     try:
         keys = {k for (k,) in con.execute("SELECT DISTINCT key FROM metrics")}
         runs = list(con.execute("SELECT project, name, status FROM runs"))
+        (config_json,) = con.execute("SELECT config FROM runs").fetchone()
     finally:
         con.close()
+    config = json.loads(config_json)
     assert {"train/loss", "train/lr"} <= keys  # per-step training metrics logged
     assert any(k.startswith("val/") for k in keys)  # eval metrics logged
+    assert {"train/spearman", "gap/spearman", "val/biggap"} <= keys  # train-val gap + biggap monitoring
+    # pos_weight is a run-start derived constant -> recorded as config, never a single-point metric
+    assert not any(k.startswith("pos_weight/") for k in keys)
+    assert {"pos_weight/>1", "pos_weight/>2", "pos_weight/>3", "pos_weight/>4"} <= set(config)
     assert ("silva-smoke", "e2e", "finished") in runs  # run named via build_log_with + finished cleanly
 
 

@@ -44,6 +44,7 @@ class TrainConfig(BaseModel):
     project_name: str = "silva"
     run_name: str | None = None
     eval_every: int = 1
+    train_eval_samples: int = 0  # fixed train-split subset evaluated each eval for the train-val gap; 0 = match val size
     early_stop_metric: str = "spearman"
     early_stop_patience: int = 3
     seed: int = 42

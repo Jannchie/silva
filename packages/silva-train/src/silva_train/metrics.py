@@ -71,6 +71,16 @@ def top_k_precision(preds: ArrayLike, targets: ArrayLike, frac: float) -> float:
     return len(top_pred & top_true) / k
 
 
+def big_gap_rate(preds: ArrayLike, targets: ArrayLike, threshold: float = 2.0) -> float:
+    """Fraction of predictions off by >= ``threshold`` rating points — the large-gap
+    blunders (you=4 / model=1) that the QWK loss targets. Lower is better.
+
+    Uses the continuous prediction (not rounded) vs the integer label, matching the
+    ``biggap`` column the sweep script watches against Spearman.
+    """
+    return float(np.mean(np.abs(_to_numpy(preds) - _to_numpy(targets)) >= threshold))
+
+
 def is_improvement(current: float, best: float) -> bool:
     """True if ``current`` is a valid (non-NaN) metric strictly better than ``best``.
 
@@ -108,6 +118,7 @@ def compute_metrics(
     m = _continuous_metrics(p, t, min_rating, max_rating)
     for name, frac in _TOP_K_FRACS.items():
         m[name] = top_k_precision(p, t, frac=frac)
+    m["biggap"] = big_gap_rate(p, t)
     return m
 
 
@@ -130,7 +141,11 @@ def _wilson_ci(hits: int, trials: int, confidence: float = 0.95) -> tuple[float,
     denom = 1 + z**2 / trials
     centre = (p_hat + z**2 / (2 * trials)) / denom
     margin = z * math.sqrt(p_hat * (1 - p_hat) / trials + z**2 / (4 * trials**2)) / denom
-    return max(0.0, centre - margin), min(1.0, centre + margin)
+    # clamp to [0,1] and pin around p_hat so float residue at the p_hat=0/1 edges
+    # can't push the bound past the point estimate (lo <= p_hat <= hi always holds)
+    lo = min(p_hat, max(0.0, centre - margin))
+    hi = max(p_hat, min(1.0, centre + margin))
+    return lo, hi
 
 
 def bootstrap_ci(
@@ -202,5 +217,9 @@ def bootstrap_ci(
         hits = round(point[name] * k)
         lo, hi = _wilson_ci(hits, k, confidence)
         result[name] = MetricCI(value=point[name], lo=lo, hi=hi)
+
+    # biggap is a proportion over all n samples -> Wilson, same as top-k
+    big_lo, big_hi = _wilson_ci(round(point["biggap"] * n), n, confidence)
+    result["biggap"] = MetricCI(value=point["biggap"], lo=big_lo, hi=big_hi)
 
     return result

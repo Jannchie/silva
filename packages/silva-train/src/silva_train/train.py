@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from accelerate.utils import set_seed
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
@@ -70,6 +70,13 @@ def train(config_path: str) -> dict[str, float]:
     train_loader = DataLoader(train_ds, batch_size=cfg.train.batch_size, shuffle=True, num_workers=cfg.data.num_workers, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.train.batch_size, shuffle=False, num_workers=cfg.data.num_workers)
 
+    # A fixed train-split subset, evaluated like val each round, so the train-val gap
+    # (train_spearman - val_spearman etc.) is a live curve — the generalization signal
+    # the sweeps optimise. Subset is seeded so the gap is comparable across epochs/runs.
+    n_train_eval = min(cfg.train.train_eval_samples or len(val_ds), len(train_ds))
+    train_eval_idx = torch.randperm(len(train_ds), generator=torch.Generator().manual_seed(cfg.train.seed))[:n_train_eval].tolist()
+    train_eval_loader = DataLoader(Subset(train_ds, train_eval_idx), batch_size=cfg.train.batch_size, shuffle=False, num_workers=cfg.data.num_workers)
+
     model = EmbeddingAestheticModel(
         embedding_dim=cfg.model.embedding_dim, dropout=cfg.model.dropout, hidden_dims=cfg.model.hidden_dims,
         n_residual_blocks=cfg.model.n_residual_blocks,
@@ -103,8 +110,8 @@ def train(config_path: str) -> dict[str, float]:
     elif cfg.train.score_anchors is not None:
         anchors = torch.tensor([float(a) for a in cfg.train.score_anchors])
 
-    model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
-        model, optimizer, train_loader, val_loader, scheduler
+    model, optimizer, train_loader, val_loader, train_eval_loader, scheduler = accelerator.prepare(
+        model, optimizer, train_loader, val_loader, train_eval_loader, scheduler
     )
 
     # EMA: shadow weights, initialized AFTER prepare() so tensors are on the right device
@@ -112,9 +119,11 @@ def train(config_path: str) -> dict[str, float]:
 
     if log_with:
         flat_config = {f"{section}.{k}": v for section, values in cfg.model_dump().items() for k, v in values.items()}
-        accelerator.init_trackers(cfg.train.project_name, config=flat_config)
         if pos_weight is not None:
-            accelerator.log({f"pos_weight/>{i + 1}": w for i, w in enumerate(pos_weight.tolist())}, step=0)
+            # derived per-threshold balancing weights are a run-start constant, not a measurement:
+            # record them as config (a static snapshot) instead of a single-point metric stranded on the curves
+            flat_config.update({f"pos_weight/>{i + 1}": w for i, w in enumerate(pos_weight.tolist())})
+        accelerator.init_trackers(cfg.train.project_name, config=flat_config)
 
     output_dir = Path(cfg.train.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -166,9 +175,16 @@ def train(config_path: str) -> dict[str, float]:
         raw_model = accelerator.unwrap_model(model)
         with ema.swapped(raw_model) if ema is not None else nullcontext():
             metrics = run_eval(model, val_loader, accelerator)
-            accelerator.print(f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
+            train_metrics = run_eval(model, train_eval_loader, accelerator)
+            gap = {k: train_metrics[k] - metrics[k] for k in metrics}
+            accelerator.print(
+                f"[epoch {epoch + 1}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items())
+                + f"  | gap spearman={gap['spearman']:.4f} qwk={gap['qwk']:.4f}"
+            )
             if log_with:
                 accelerator.log({f"val/{k}": v for k, v in metrics.items()}, step=global_step)
+                accelerator.log({f"train/{k}": v for k, v in train_metrics.items()}, step=global_step)
+                accelerator.log({f"gap/{k}": v for k, v in gap.items()}, step=global_step)
 
             current = metrics[cfg.train.early_stop_metric]
             if is_improvement(current, best_metric):
