@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "pandm-inspect": {
+      "source": "jannchie/pandm",
+      "sourceType": "github",
+      "skillPath": "skills/pandm-inspect/SKILL.md",
+      "computedHash": "b0e592e2b0983e2a114bfb2f31743d4560da2b81d35cfce516170e496b8b6dbd"
+    },
+    "pandm-track": {
+      "source": "jannchie/pandm",
+      "sourceType": "github",
+      "skillPath": "skills/pandm-track/SKILL.md",
+      "computedHash": "1b3d26a66e16784a0caecf68cbf5995fc5f55ba4f150297283970ff31ff0219d"
+    }
+  }
+}
