@@ -25,7 +25,7 @@ train:
   score_anchors: auto        # perceptual category spacing (kNN pseudo-retest): the fuzzy 3/4 boundary costs ~1/4 step — MAE -16%, top1% +20%, latent canyon artifact eased
   label_smoothing: 0.2       # eps sweep PEAK (val/test sp both max @0.2, 0.25+ regresses): soften ordinal {0,1}->{0.2,0.8}, latent [-33,41]->[-2.7,5.8], >0.99 pile-up 14.5%->0%, top1% select 98%->100%, unit still spans [0.025,0.992]
   mixed_precision: "no"      # head 极小、backbone 不参训，fp32 无明显速度损失但数值更稳（利于 soft-spearman/qwk/校准）；CPU 也用 "no"
-  report_to: wandb           # needs `wandb login`; set "none" to disable
+  report_to: pandm           # local-first (writes ./.pandm); set "none" to disable
   project_name: silva
   run_name: null
   eval_every: 1

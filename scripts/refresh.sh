@@ -7,7 +7,6 @@
 #
 #   bash scripts/refresh.sh [DB_PATH]
 set -euo pipefail
-export WANDB_MODE=disabled
 export PYTHONIOENCODING=utf-8
 DB="${1:-E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite}"
 

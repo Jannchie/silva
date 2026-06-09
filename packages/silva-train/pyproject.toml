@@ -23,8 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 # Only the pictoria SQLite adapter (scripts/export_manifest.py) needs sqlite-vec.
 export = ["sqlite-vec>=0.1"]
-# Optional experiment tracking (silva_train.train report_to: wandb).
-wandb = ["wandb>=0.17"]
+# Optional experiment tracking — local-first (silva_train.train report_to: pandm).
+pandm = ["pandm>=0.8"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/silva_train"]

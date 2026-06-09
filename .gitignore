@@ -15,7 +15,7 @@ wheels/
 # Data & training artifacts (anchored to repo root so silva/data/ stays tracked)
 /data/
 /outputs/
-/wandb/
+/.pandm/
 *.parquet
 *.ckpt
 *.pt

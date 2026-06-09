@@ -25,6 +25,7 @@ from silva_train.data.dataset import AestheticDataset
 from silva_train.ema import EmaShadow
 from silva_train.losses import compute_pos_weight, silva_loss
 from silva_train.metrics import compute_metrics, is_improvement
+from silva_train.tracking import build_log_with
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("silva.train")
@@ -57,7 +58,7 @@ def run_eval(model: torch.nn.Module, loader: DataLoader, accelerator: Accelerato
 def train(config_path: str) -> dict[str, float]:
     cfg = Config.from_yaml(config_path)
     set_seed(cfg.train.seed)
-    log_with = cfg.train.report_to if cfg.train.report_to != "none" else None
+    log_with = build_log_with(cfg.train.report_to, cfg.train.project_name, cfg.train.run_name)
     accelerator = Accelerator(
         mixed_precision=cfg.train.mixed_precision,
         gradient_accumulation_steps=cfg.train.grad_accum,
@@ -111,7 +112,7 @@ def train(config_path: str) -> dict[str, float]:
 
     if log_with:
         flat_config = {f"{section}.{k}": v for section, values in cfg.model_dump().items() for k, v in values.items()}
-        accelerator.init_trackers(cfg.train.project_name, config=flat_config, init_kwargs={"wandb": {"name": cfg.train.run_name}})
+        accelerator.init_trackers(cfg.train.project_name, config=flat_config)
         if pos_weight is not None:
             accelerator.log({f"pos_weight/>{i + 1}": w for i, w in enumerate(pos_weight.tolist())}, step=0)
 

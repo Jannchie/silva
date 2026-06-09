@@ -40,7 +40,7 @@ class TrainConfig(BaseModel):
     loss_truncation: float = 0.0  # drop the top-k% highest-loss samples per batch; 0 = disabled, typical 0.05
     cosine_restarts: int = 0  # number of warm restarts; 0 = single cosine decay (default)
     mixed_precision: str = "no"  # accelerate mixed precision; head 极小用 fp32 数值更稳，bf16 无明显收益；"no" 同样适用 CPU
-    report_to: str = "none"        # "wandb" to log to Weights & Biases, "none" to disable
+    report_to: str = "pandm"       # default: local-first tracking (writes ./.pandm); "none" to disable, or any accelerate tracker name
     project_name: str = "silva"
     run_name: str | None = None
     eval_every: int = 1

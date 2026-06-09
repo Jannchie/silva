@@ -49,6 +49,7 @@ def test_training_closed_loop(tmp_path):
             "early_stop_metric": "spearman",
             "early_stop_patience": 3,
             "seed": 0,
+            "report_to": "none",  # this loop tests training, not tracking (default is pandm)
             "output_dir": str(out_dir),
         },
     }
@@ -87,6 +88,7 @@ def test_training_closed_loop_with_anchored_qwk(tmp_path):
         "early_stop_patience": 3,
         "seed": 0,
         "qwk_weight": 1.0,
+        "report_to": "none",  # this loop tests anchors+QWK, not tracking (default is pandm)
     }
     for name, anchors in (("explicit", [1.0, 2.0, 3.0, 3.5, 4.5]), ("auto", "auto")):
         out_dir = tmp_path / f"out_{name}"
@@ -107,6 +109,60 @@ def test_training_closed_loop_with_anchored_qwk(tmp_path):
 
         assert (out_dir / "best.safetensors").exists(), name
         assert "spearman" in metrics, name
+
+
+def test_training_closed_loop_reports_to_pandm(tmp_path, monkeypatch):
+    # the accelerate -> PandmTracker seam: report_to "pandm" must flow real metrics into a pandm run
+    import sqlite3
+
+    from silva_train.train import train
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(24):
+        score = (i % 5) + 1
+        emb = rng.standard_normal(16)
+        emb[0] += score * 3.0
+        rows.append({"post_id": i, "embedding": emb.tolist(), "personal_score": score, "split": "train" if i < 18 else "val"})
+    manifest = tmp_path / "manifest.parquet"
+    write_manifest(pd.DataFrame(rows), manifest)
+
+    monkeypatch.chdir(tmp_path)  # pandm writes its db under ./.pandm relative to cwd
+    cfg = {
+        "model": {"embedding_dim": 16, "dropout": 0.0},
+        "data": {"manifest_path": str(manifest), "num_workers": 0},
+        "train": {
+            "batch_size": 4,
+            "epochs": 2,
+            "lr_head": 1e-2,
+            "warmup_ratio": 0.0,
+            "use_pos_weight": True,
+            "mixed_precision": "no",
+            "eval_every": 1,
+            "early_stop_patience": 3,
+            "seed": 0,
+            "output_dir": str(tmp_path / "out"),
+            "report_to": "pandm",
+            "project_name": "silva-smoke",
+            "run_name": "e2e",
+        },
+    }
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    train(str(cfg_path))
+
+    db = tmp_path / ".pandm" / "pandm.db"
+    assert db.exists()
+    con = sqlite3.connect(db)
+    try:
+        keys = {k for (k,) in con.execute("SELECT DISTINCT key FROM metrics")}
+        runs = list(con.execute("SELECT project, name, status FROM runs"))
+    finally:
+        con.close()
+    assert {"train/loss", "train/lr"} <= keys  # per-step training metrics logged
+    assert any(k.startswith("val/") for k in keys)  # eval metrics logged
+    assert ("silva-smoke", "e2e", "finished") in runs  # run named via build_log_with + finished cleanly
 
 
 def test_training_closed_loop_with_ema(tmp_path):
@@ -145,6 +201,7 @@ def test_training_closed_loop_with_ema(tmp_path):
             "early_stop_patience": 3,
             "seed": 0,
             "ema_decay": 0.99,
+            "report_to": "none",  # this loop tests EMA, not tracking (default is pandm)
             "output_dir": str(out_dir),
         },
     }

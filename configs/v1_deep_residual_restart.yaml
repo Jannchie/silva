@@ -31,7 +31,7 @@ train:
   loss_truncation: 0.05
   cosine_restarts: 3                 # 4 cosine cycles: LR resets 3 times
   mixed_precision: "no"
-  report_to: wandb
+  report_to: pandm
   project_name: silva
   run_name: deep-res-ema-restart
   eval_every: 1

@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument("--manifest", default="data/manifest.parquet")
     parser.add_argument("--db", default=DEFAULT_DB)
     parser.add_argument("--split", default="val")
-    parser.add_argument("--wandb", action="store_true", help="log each baseline as a wandb run")
+    parser.add_argument("--pandm", action="store_true", help="log each baseline as a pandm run")
     args = parser.parse_args()
 
     df = pd.read_parquet(args.manifest)
@@ -45,10 +45,10 @@ def main() -> None:
         metrics = compute_metrics(sub[col].to_numpy(), sub["personal_score"].to_numpy())
         line = " ".join(f"{k}={v:.4f}" for k, v in metrics.items())
         print(f"[{args.split}] {col} vs personal (n={len(sub)}): {line}")
-        if args.wandb:
-            import wandb
+        if args.pandm:
+            import pandm
 
-            run = wandb.init(project="silva", name=f"{col}-{args.split}", reinit=True)
+            run = pandm.init(project="silva", name=f"{col}-{args.split}")
             run.log({f"{args.split}/{k}": v for k, v in metrics.items()})
             run.finish()
 

@@ -31,7 +31,7 @@ train:
   ema_decay: 0.999                   # exponential moving average: smoother, flatter minima
   loss_truncation: 0.05              # drop top-5% highest-loss samples (likely mislabelled)
   mixed_precision: "no"
-  report_to: wandb
+  report_to: pandm
   project_name: silva
   run_name: deep-res-ema-trunc
   eval_every: 1

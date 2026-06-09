@@ -13,7 +13,7 @@ Two seams:
     inject a fake trainer and assert no row is ever predicted by a model that saw it.
   - :func:`make_fit_head` — the default ``fit_fn``: the production stage-1 head + loss mix
     (defaults mirror ``configs/v1_stage1_head.yaml``) in a plain in-memory loop, no
-    accelerate/wandb harness.
+    accelerate/pandm harness.
 
 Fold assignment is the caller's job (``assign_folds`` over embedding content keys), so
 folds stay stable across manifest re-exports just like splits do.

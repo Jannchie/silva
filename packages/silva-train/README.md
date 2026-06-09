@@ -15,7 +15,7 @@ Part of the uv workspace — run from the repo root:
 ```bash
 uv sync                 # core training stack (torch, accelerate, pandas, scipy, ...)
 uv sync --extra export  # + sqlite-vec, for the pictoria manifest adapter
-uv sync --extra wandb   # + wandb, for experiment tracking
+uv sync --extra pandm   # + pandm, for local-first experiment tracking
 ```
 
 ## Manifest contract
