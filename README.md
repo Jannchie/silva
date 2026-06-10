@@ -78,7 +78,7 @@ Reports MAE, RMSE, Pearson, Spearman, QWK, Top-1% / Top-5% precision.
 
 ```bash
 pip install "silva-scorer[backbone]"
-silva score image.jpg --repo-id Jannchie/silva-aesthetic
+silva image.jpg
 ```
 
 See [`packages/silva`](packages/silva#readme) for the Python API.

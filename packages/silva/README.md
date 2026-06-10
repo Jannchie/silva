@@ -29,8 +29,8 @@ scorer.score(["image1.jpg", "image2.jpg"])  # [0.7421, 0.3128]
 Or from the CLI:
 
 ```bash
-silva score image1.jpg image2.jpg --repo-id Jannchie/silva-aesthetic
-# image1.jpg  score=0.7421
+silva image1.jpg              # 0.7421
+silva image1.jpg image2.jpg   # 0.7421\timage1.jpg  /  0.3128\timage2.jpg
 ```
 
 ## Score from an embedding
