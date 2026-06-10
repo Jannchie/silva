@@ -7,6 +7,7 @@ from silva_train.losses import (
     compute_pos_weight,
     listwise_loss,
     make_ordinal_targets,
+    margin_pairwise_loss,
     ordinal_loss,
     ordinal_to_probs,
     pairwise_ranking_loss,
@@ -14,6 +15,43 @@ from silva_train.losses import (
     silva_loss,
     soft_spearman_loss,
 )
+
+
+_A_HIGH = torch.tensor([[9.0, 9, 9, 9]])  # ordinal score ~5
+_B_LOW = torch.tensor([[-9.0, -9, -9, -9]])  # ordinal score ~1
+
+
+def test_margin_pairwise_loss_lower_when_correct_order():
+    # a wins (target +1): a scoring far above b must cost less than the reverse.
+    correct = margin_pairwise_loss(_A_HIGH, _B_LOW, torch.tensor([1.0]))
+    wrong = margin_pairwise_loss(_B_LOW, _A_HIGH, torch.tensor([1.0]))
+    assert correct.item() < wrong.item()
+
+
+def test_margin_pairwise_loss_zero_when_margin_satisfied():
+    # winner already leads by far more than the margin -> no penalty
+    assert margin_pairwise_loss(_A_HIGH, _B_LOW, torch.tensor([1.0]), margin=0.5).item() == pytest.approx(0.0)
+
+
+def test_margin_pairwise_loss_respects_b_wins():
+    # b wins (target -1): b leading satisfies the margin -> ~0
+    assert margin_pairwise_loss(_B_LOW, _A_HIGH, torch.tensor([-1.0]), margin=0.5).item() == pytest.approx(0.0)
+
+
+def test_margin_pairwise_loss_tie_penalises_gap():
+    # tie (target 0): a big score gap costs more than a small one
+    near = margin_pairwise_loss(torch.zeros(1, 4), torch.tensor([[0.5, 0.5, 0.5, 0.5]]), torch.tensor([0.0]))
+    far = margin_pairwise_loss(_A_HIGH, _B_LOW, torch.tensor([0.0]))
+    assert near.item() < far.item()
+
+
+def test_margin_pairwise_loss_keeps_graph():
+    logits_a = torch.randn(4, 4, requires_grad=True)
+    logits_b = torch.randn(4, 4, requires_grad=True)
+    loss = margin_pairwise_loss(logits_a, logits_b, torch.tensor([1.0, -1.0, 0.0, 1.0]))
+    loss.backward()  # must not error
+    assert logits_a.grad is not None
+    assert logits_b.grad is not None
 
 
 def test_make_ordinal_targets_maps_each_score():

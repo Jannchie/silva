@@ -72,6 +72,39 @@ def pairwise_ranking_loss(logits: torch.Tensor, scores: torch.Tensor) -> torch.T
     return F.binary_cross_entropy_with_logits(ordered, torch.ones_like(ordered))
 
 
+def margin_pairwise_loss(
+    logits_a: torch.Tensor,
+    logits_b: torch.Tensor,
+    target: torch.Tensor,
+    margin: float = 0.5,
+    tie_margin: float = 0.0,
+) -> torch.Tensor:
+    """Margin-ranking loss on EXPLICIT human preference pairs (your pictoria labels).
+
+    ``logits_a`` / ``logits_b`` ``[P, 4]`` are the head outputs for the two sides of P
+    comparisons; ``target`` ``[P]`` is ``+1`` (a preferred), ``-1`` (b preferred) or ``0``
+    (tie). Decisive pairs pay ``relu(margin - target*(s_a - s_b))`` — the winner's
+    continuous ``ordinal_score`` must lead by at least ``margin``. Tie pairs pay
+    ``relu(|s_a - s_b| - tie_margin)`` — images judged equal must score close.
+
+    Unlike :func:`pairwise_ranking_loss`, which manufactures pairs from the *absolute*
+    labels inside one batch, this consumes externally-supplied preferences. It is the
+    only term that can teach the same-bucket (boundary) ordering absolute labels can't
+    express. Returns a graph-preserving zero when a side is empty.
+    """
+    s_a = ordinal_score_from_logits(logits_a)
+    s_b = ordinal_score_from_logits(logits_b)
+    diff = s_a - s_b
+    decisive = target != 0
+    tie = ~decisive
+    loss = logits_a.sum() * 0.0
+    if decisive.any():
+        loss = loss + F.relu(margin - target[decisive].to(diff.dtype) * diff[decisive]).mean()
+    if tie.any():
+        loss = loss + F.relu(diff[tie].abs() - tie_margin).mean()
+    return loss
+
+
 def soft_spearman_loss(logits: torch.Tensor, scores: torch.Tensor, temp: float = 1.0) -> torch.Tensor:
     """Differentiable Spearman surrogate: ``1 - corr(soft_rank(pred), target)``.
 
