@@ -99,8 +99,7 @@ leakage-free splits, manifest contract) plus a CPU-only end-to-end training smok
 ## Scope (v1)
 
 Personal score only. External AI scorers, LoRA / full fine-tune, distribution head, and serving
-are deferred. Design spec:
-[`docs/superpowers/specs/2026-05-24-silva-design.md`](docs/superpowers/specs/2026-05-24-silva-design.md).
+are deferred.
 
 ## Citation
 
