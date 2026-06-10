@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use SILVA, please cite it as below."
+title: "SILVA: SigLIP-based Illustration Visual Aesthetic Scorer"
+abstract: >-
+  An ordinal-regression head on top of frozen SigLIP2 embeddings that learns one
+  person's aesthetic taste from their 1-5 ratings and scores any illustration on
+  a continuous scale.
+type: software
+authors:
+  - family-names: Pan
+    given-names: Jianqi
+    alias: Jannchie
+repository-code: "https://github.com/Jannchie/silva"
+url: "https://github.com/Jannchie/silva"
+license: MIT
+year: 2026

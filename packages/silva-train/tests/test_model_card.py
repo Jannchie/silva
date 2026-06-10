@@ -24,3 +24,20 @@ def test_render_model_card_links_to_browser_demo():
 
     assert "Try it in your browser" in card
     assert "huggingface.co/spaces/Jannchie/silva-aesthetic-demo" in card
+
+
+def test_render_model_card_includes_bibtex_citation():
+    cfg = ModelConfig(embedding_dim=1152, hidden_dims=[512], n_residual_blocks=6)
+    card = render_model_card("user/silva-aesthetic", "backbone", cfg, {})
+
+    # braces must survive the f-string unescaped into valid BibTeX
+    assert "@software{pan2026silva," in card
+    assert "title   = {{SILVA}: {SigLIP}-based Illustration Visual Aesthetic Scorer}," in card
+    assert "url     = {https://github.com/Jannchie/silva}," in card
+
+
+def test_render_model_card_embeds_header_image():
+    cfg = ModelConfig(embedding_dim=1152, hidden_dims=[512], n_residual_blocks=6)
+    card = render_model_card("user/silva-aesthetic", "backbone", cfg, {})
+
+    assert "assets/silva-header.png" in card

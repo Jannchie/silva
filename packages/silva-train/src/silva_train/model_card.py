@@ -53,6 +53,10 @@ model-index:
             value: {_fmt(metrics, "mae")}
 ---
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Jannchie/silva/main/assets/silva-header.png" alt="SILVA" width="100%">
+</p>
+
 # SILVA — Personal Aesthetic Head
 
 **[▶ Try it in your browser]({DEMO_URL})** — upload an illustration, see this person's score live.
@@ -93,4 +97,15 @@ score = head(embedding)["calibrated_score"]  # calibrated to the label distribut
 
 Architecture: `embedding[1152] → LayerNorm → {trunk} → ordinal head`. Trained on one
 person's private 1–5 ratings; labels and images not released. [Source]({REPO_URL})
+
+## Citation
+
+```bibtex
+@software{{pan2026silva,
+  author  = {{Pan, Jianqi}},
+  title   = {{{{SILVA}}: {{SigLIP}}-based Illustration Visual Aesthetic Scorer}},
+  year    = {{2026}},
+  url     = {{{REPO_URL}}},
+}}
+```
 """

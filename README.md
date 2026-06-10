@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/silva-header.png" alt="SILVA" width="100%">
+</p>
+
 # SILVA
 
 **S**igLIP-based **I**llustration **V**isual **A**esthetic Scorer — learns *one person's*
@@ -97,3 +101,16 @@ leakage-free splits, manifest contract) plus a CPU-only end-to-end training smok
 Personal score only. External AI scorers, LoRA / full fine-tune, distribution head, and serving
 are deferred. Design spec:
 [`docs/superpowers/specs/2026-05-24-silva-design.md`](docs/superpowers/specs/2026-05-24-silva-design.md).
+
+## Citation
+
+If you use SILVA in your research, please cite it:
+
+```bibtex
+@software{pan2026silva,
+  author  = {Pan, Jianqi},
+  title   = {{SILVA}: {SigLIP}-based Illustration Visual Aesthetic Scorer},
+  year    = {2026},
+  url     = {https://github.com/Jannchie/silva},
+}
+```

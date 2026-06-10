@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Jannchie/silva/main/assets/silva-header.png" alt="SILVA" width="100%">
+</p>
+
 # silva-scorer
 
 Scores an illustration by **one person's** aesthetic taste — an ordinal-regression head on top
@@ -54,6 +58,17 @@ trained against.
 
 `silva` is inference-only. To fit a head on your own 1–5 ratings, see the
 [silva-train](https://github.com/Jannchie/silva/tree/main/packages/silva-train) package.
+
+## Citation
+
+```bibtex
+@software{pan2026silva,
+  author  = {Pan, Jianqi},
+  title   = {{SILVA}: {SigLIP}-based Illustration Visual Aesthetic Scorer},
+  year    = {2026},
+  url     = {https://github.com/Jannchie/silva},
+}
+```
 
 ## License
 
