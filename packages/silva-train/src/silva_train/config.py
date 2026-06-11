@@ -38,7 +38,7 @@ class TrainConfig(BaseModel):
     qwk_weight: float = 0.0  # weight on quadratic-weighted-kappa loss (crushes large-gap blunders, improves MAE)
     pairwise_weight: float = 0.0  # weight on the explicit-preference margin loss (data.pair_manifest_path); 0 = disabled
     pair_margin: float = 0.5  # decisive pairs: winner's ordinal_score must lead by >= this margin
-    tie_margin: float = 0.0  # tie pairs: |score_a - score_b| above this is penalised
+    tie_margin: float = 0.1  # tie pairs: |score_a - score_b| above this is penalised; >0 so a tie means "below perceptual threshold", not exact equality
     pair_batch: int = 256  # pairs sampled per micro-batch for the margin term
     score_anchors: list[float] | Literal["auto"] | None = None  # non-uniform QWK category positions; "auto" = kNN pseudo-retest estimate
     label_smoothing: float = 0.0  # soften ordinal targets {0,1}->{eps,1-eps}; keeps latent finite, kills the 0~1 tail saturation
