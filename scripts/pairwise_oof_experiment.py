@@ -40,7 +40,7 @@ from silva.models.aesthetic import EmbeddingAestheticModel
 from silva.scoring import ordinal_score_from_logits
 from silva_train.data.manifest import merge_manifests
 from silva_train.losses import compute_pos_weight, margin_pairwise_loss, silva_loss
-from silva_train.metrics import _wilson_ci
+from silva_train.metrics import _wilson_ci, compute_metrics
 
 DEFAULT_DB = r"E:/pictoria/server/illustration/images/.pictoria/pictoria.sqlite"
 DEFAULT_MANIFESTS = ["data/manifest.parquet", "data/bad.parquet"]
@@ -52,12 +52,19 @@ def pair_fold(a: int, b: int, n_folds: int, salt: str = "pairfold-v1") -> int:
     return int(hashlib.sha256(key.encode()).hexdigest(), 16) % n_folds
 
 
-def load_absolute(manifests: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
+def load_absolute(manifests: list[str], split: str = "train") -> tuple[torch.Tensor, torch.Tensor]:
     df = merge_manifests([pd.read_parquet(p) for p in manifests])
-    df = df[df["split"] == "train"].reset_index(drop=True)
+    df = df[df["split"] == split].reset_index(drop=True)
     emb = torch.tensor(np.stack(df["embedding"].to_numpy()), dtype=torch.float32)
     score = torch.tensor(df["personal_score"].to_numpy(), dtype=torch.float32)
     return emb, score
+
+
+@torch.no_grad()
+def abs_test_metrics(model: EmbeddingAestheticModel, test_emb: torch.Tensor, test_score: torch.Tensor, device: torch.device) -> dict[str, float]:
+    """Absolute held-out metrics — a guardrail that the pairwise term doesn't wreck pointwise quality."""
+    preds = ordinal_score_from_logits(model(test_emb.to(device))["logits"]).float().cpu()
+    return compute_metrics(preds, test_score)
 
 
 def load_pairs(db: str, dimension: str) -> tuple[list[tuple[int, int, int]], dict[int, np.ndarray]]:
@@ -139,8 +146,12 @@ def score_posts(model: EmbeddingAestheticModel, ids: list[int], emb: dict[int, n
     return dict(zip(ids, s, strict=True))
 
 
-def report(name: str, pairs: list[tuple[int, int, int]], dscore: np.ndarray, base_absd: np.ndarray | None, buckets: int) -> np.ndarray:
-    """Print directional accuracy overall + by |dscore| bucket; return per-pair |dscore|."""
+def report(name: str, pairs: list[tuple[int, int, int]], dscore: np.ndarray, base_absd: np.ndarray | None, buckets: int) -> tuple[np.ndarray, float, list[float]]:
+    """Print directional accuracy overall + by |dscore| bucket.
+
+    Returns (per-pair |dscore|, overall accuracy, per-bucket accuracy) so the caller
+    can tabulate a weight sweep; bucket 0 is the lowest-|dscore| (hardest) boundary pairs.
+    """
     decisive = np.array([t != 0 for _, _, t in pairs])
     a_wins = np.array([t == 1 for _, _, t in pairs])
     absd = np.abs(dscore)
@@ -148,23 +159,28 @@ def report(name: str, pairs: list[tuple[int, int, int]], dscore: np.ndarray, bas
     correct = int(((d > 0) == aw).sum())
     n = len(d)
     lo, hi = _wilson_ci(correct, n)
+    overall = correct / n
     print(f"\n== {name}: directional accuracy ==")
-    print(f"  {correct / n:.3f}  [{lo:.3f}, {hi:.3f}]   (n={n})")
+    print(f"  {overall:.3f}  [{lo:.3f}, {hi:.3f}]   (n={n})")
     # bucket by the BASELINE head's confidence so both models share edges
     edges_src = base_absd if base_absd is not None else absd
     qs = np.quantile(edges_src[decisive], np.linspace(0, 1, buckets + 1))
     print(f"  by |dscore| bucket (edges from {'baseline' if base_absd is not None else 'self'}):")
+    bucket_accs: list[float] = []
+    src = base_absd[decisive] if base_absd is not None else absd[decisive]
     for i in range(buckets):
         up = i == buckets - 1
-        src = (base_absd[decisive] if base_absd is not None else absd[decisive])
         m = (src >= qs[i]) & (src <= qs[i + 1] if up else src < qs[i + 1])
         if m.any():
             c = int(((d[m] > 0) == aw[m]).sum())
+            bucket_accs.append(c / m.sum())
             print(f"    [{qs[i]:.3f}, {qs[i + 1]:.3f}]  n={int(m.sum()):<4} acc={c / m.sum():.3f}")
+        else:
+            bucket_accs.append(float("nan"))
     tie = ~decisive
     if tie.any():
         print(f"  tie |dscore|: median={np.median(absd[tie]):.3f}  vs a/b median={np.median(absd[decisive]):.3f}")
-    return absd
+    return absd, overall, bucket_accs
 
 
 def main() -> None:
@@ -172,7 +188,7 @@ def main() -> None:
     ap.add_argument("--db", default=DEFAULT_DB)
     ap.add_argument("--manifests", nargs="+", default=DEFAULT_MANIFESTS)
     ap.add_argument("--dimension", default="overall")
-    ap.add_argument("--pairwise-weight", type=float, default=1.0)
+    ap.add_argument("--pairwise-weight", type=float, nargs="+", default=[1.0], help="one or more weights to sweep (baseline trained once, reused)")
     ap.add_argument("--margin", type=float, default=0.5)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch-size", type=int, default=256)
@@ -182,38 +198,57 @@ def main() -> None:
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device={device}  epochs={args.epochs}  pairwise_weight={args.pairwise_weight}  margin={args.margin}  folds={args.folds}")
+    weights = args.pairwise_weight
+    print(f"device={device}  epochs={args.epochs}  pairwise_weight(s)={weights}  margin={args.margin}  folds={args.folds}")
 
     abs_emb, abs_score = load_absolute(args.manifests)
+    test_emb, test_score = load_absolute(args.manifests, "test")
     pairs, pemb = load_pairs(args.db, args.dimension)
-    print(f"absolute train rows={len(abs_emb)}   pairs={len(pairs)} (a/b={sum(1 for *_, t in pairs if t)}, tie={sum(1 for *_, t in pairs if not t)})")
+    print(f"absolute train rows={len(abs_emb)}  test rows={len(test_emb)}  pairs={len(pairs)} (a/b={sum(1 for *_, t in pairs if t)}, tie={sum(1 for *_, t in pairs if not t)})")
 
     all_ids = sorted({p for a, b, _ in pairs for p in (a, b)})
+    folds = np.array([pair_fold(a, b, args.folds) for a, b, _ in pairs])
 
-    # ---- baseline: absolute-only head, trained once, scores every pair ----
+    # ---- baseline: absolute-only head, trained ONCE, reused across every weight ----
     print("\n[baseline] training absolute-only head ...")
     base_model = fit_head(abs_emb, abs_score, pairwise_weight=0.0, epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=str(device))
     base_s = score_posts(base_model, all_ids, pemb, device)
     base_dscore = np.array([base_s[a] - base_s[b] for a, b, _ in pairs])
-    base_absd = report("BASELINE (absolute only)", pairs, base_dscore, None, args.buckets)
+    base_absd, base_acc, base_buckets = report("BASELINE (absolute only)", pairs, base_dscore, None, args.buckets)
+    base_abs = abs_test_metrics(base_model, test_emb, test_score, device)
 
-    # ---- treatment: absolute + pairwise, leave-pairs-out OOF ----
-    folds = np.array([pair_fold(a, b, args.folds) for a, b, _ in pairs])
-    oof_dscore = np.full(len(pairs), np.nan)
-    for f in range(args.folds):
-        held = folds == f
-        train_idx = np.where(~held)[0]
-        pa = torch.tensor(np.stack([pemb[pairs[i][0]] for i in train_idx]), dtype=torch.float32)
-        pb = torch.tensor(np.stack([pemb[pairs[i][1]] for i in train_idx]), dtype=torch.float32)
-        pt = torch.tensor([float(pairs[i][2]) for i in train_idx], dtype=torch.float32)
-        print(f"[treatment] fold {f}: train_pairs={len(train_idx)} held={int(held.sum())} ...")
-        m = fit_head(abs_emb, abs_score, pair_a=pa, pair_b=pb, pair_t=pt, pairwise_weight=args.pairwise_weight, margin=args.margin, epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=str(device))
-        held_ids = sorted({p for i in np.where(held)[0] for p in (pairs[i][0], pairs[i][1])})
-        s = score_posts(m, held_ids, pemb, device)
-        for i in np.where(held)[0]:
-            a, b, _ = pairs[i]
-            oof_dscore[i] = s[a] - s[b]
-    report(f"TREATMENT (absolute + pairwise w={args.pairwise_weight})", pairs, oof_dscore, base_absd, args.buckets)
+    # variant -> (overall dir acc, hardest-bucket acc, absolute test metrics)
+    summary: list[tuple[str, float, float, dict[str, float]]] = [("baseline", base_acc, base_buckets[0], base_abs)]
+
+    # ---- treatment: absolute + pairwise, leave-pairs-out OOF, swept over weights ----
+    for w in weights:
+        oof_dscore = np.full(len(pairs), np.nan)
+        probe_model = None  # a full-pair (fold-0 train) head, only for the absolute guardrail
+        for f in range(args.folds):
+            held = folds == f
+            train_idx = np.where(~held)[0]
+            pa = torch.tensor(np.stack([pemb[pairs[i][0]] for i in train_idx]), dtype=torch.float32)
+            pb = torch.tensor(np.stack([pemb[pairs[i][1]] for i in train_idx]), dtype=torch.float32)
+            pt = torch.tensor([float(pairs[i][2]) for i in train_idx], dtype=torch.float32)
+            print(f"[w={w}] fold {f}: train_pairs={len(train_idx)} held={int(held.sum())} ...")
+            m = fit_head(abs_emb, abs_score, pair_a=pa, pair_b=pb, pair_t=pt, pairwise_weight=w, margin=args.margin, epochs=args.epochs, batch_size=args.batch_size, seed=args.seed, device=str(device))
+            if probe_model is None:
+                probe_model = m
+            held_ids = sorted({p for i in np.where(held)[0] for p in (pairs[i][0], pairs[i][1])})
+            s = score_posts(m, held_ids, pemb, device)
+            for i in np.where(held)[0]:
+                a, b, _ = pairs[i]
+                oof_dscore[i] = s[a] - s[b]
+        _, acc, buckets = report(f"TREATMENT (absolute + pairwise w={w})", pairs, oof_dscore, base_absd, args.buckets)
+        abs_m = abs_test_metrics(probe_model, test_emb, test_score, device)
+        summary.append((f"w={w}", acc, buckets[0], abs_m))
+
+    # ---- sweep summary: directional accuracy vs absolute guardrail ----
+    print("\n== SWEEP SUMMARY ==")
+    print(f"  {'variant':<10}{'dir_acc':>9}{'hardest':>9}   |  {'abs_mae':>8}{'abs_spr':>9}{'abs_qwk':>9}")
+    for name, acc, hard, mm in summary:
+        print(f"  {name:<10}{acc:>9.3f}{hard:>9.3f}   |  {mm['mae']:>8.4f}{mm['spearman']:>9.4f}{mm['qwk']:>9.4f}")
+    print("  (hardest = lowest-|dscore| boundary bucket; abs_* = absolute test split guardrail: higher spr/qwk + lower mae = unharmed)")
 
 
 if __name__ == "__main__":
