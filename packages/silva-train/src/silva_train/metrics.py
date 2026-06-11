@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TypeAlias
 
 import numpy as np
 from scipy import stats
 
-ArrayLike = "list[float] | np.ndarray | object"
+ArrayLike: TypeAlias = "list[float] | np.ndarray | object"
 
 
 def _to_numpy(x: ArrayLike) -> np.ndarray:
@@ -45,8 +46,7 @@ def quadratic_weighted_kappa(
     n = max_rating - min_rating + 1
 
     observed = np.zeros((n, n), dtype=np.float64)
-    for true_r, pred_r in zip(t, p, strict=True):
-        observed[true_r - min_rating, pred_r - min_rating] += 1
+    np.add.at(observed, (t - min_rating, p - min_rating), 1)
 
     idx = np.arange(n)
     weights = (idx[:, None] - idx[None, :]) ** 2 / (n - 1) ** 2

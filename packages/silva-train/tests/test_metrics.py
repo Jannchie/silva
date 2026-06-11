@@ -48,6 +48,33 @@ def test_qwk_chance_agreement_is_zero():
     assert quadratic_weighted_kappa([1, 2, 1, 2], [1, 1, 2, 2], min_rating=1, max_rating=2) == 0.0
 
 
+def _qwk_loop_reference(preds, targets, min_rating=1, max_rating=5):
+    """Pre-vectorisation reference: fills the confusion matrix with a Python loop."""
+    p = np.clip(np.rint(np.asarray(preds, dtype=np.float64)).astype(int), min_rating, max_rating)
+    t = np.clip(np.rint(np.asarray(targets, dtype=np.float64)).astype(int), min_rating, max_rating)
+    n = max_rating - min_rating + 1
+    observed = np.zeros((n, n), dtype=np.float64)
+    for true_r, pred_r in zip(t, p, strict=True):
+        observed[true_r - min_rating, pred_r - min_rating] += 1
+    idx = np.arange(n)
+    weights = (idx[:, None] - idx[None, :]) ** 2 / (n - 1) ** 2
+    hist_true = observed.sum(axis=1)
+    hist_pred = observed.sum(axis=0)
+    expected = np.outer(hist_true, hist_pred) / observed.sum()
+    denom = float((weights * expected).sum())
+    if denom == 0:
+        return 1.0
+    return 1.0 - float((weights * observed).sum()) / denom
+
+
+def test_qwk_matches_loop_reference_on_random_data():
+    rng = np.random.default_rng(7)
+    for _ in range(20):
+        preds = rng.integers(1, 6, size=200)
+        targets = rng.integers(1, 6, size=200)
+        assert quadratic_weighted_kappa(preds, targets) == _qwk_loop_reference(preds, targets)
+
+
 def test_top_k_precision_identical_ranking():
     preds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     targets = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

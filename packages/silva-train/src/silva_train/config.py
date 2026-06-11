@@ -18,7 +18,9 @@ class ModelConfig(BaseModel):
 
 class DataConfig(BaseModel):
     manifest_path: str | list[str] = "data/manifest.parquet"  # one parquet, or a list to merge several sources for training
-    num_workers: int = 4
+    # 0: the dataset is fully resident in memory tensors, so worker processes only add
+    # cost — on Windows (spawn) each would pickle the whole dataset.
+    num_workers: int = 0
 
 
 class TrainConfig(BaseModel):

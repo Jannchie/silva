@@ -66,3 +66,24 @@ def test_single_path_still_works(tmp_path):
     # a bare string path keeps working (backward compatible)
     m = _manifest(tmp_path, [{"embedding": [0.1, 0.2], "personal_score": 3, "split": "train"}])
     assert len(AestheticDataset(m, "train")) == 1
+
+
+def test_prestacked_tensors(tmp_path):
+    # embeddings/scores are pre-stacked into resident tensors at init (not materialised per-getitem)
+    m = _manifest(
+        tmp_path,
+        [
+            {"embedding": [0.1, 0.2, 0.3, 0.4], "personal_score": 4, "split": "train"},
+            {"embedding": [0.5, 0.6, 0.7, 0.8], "personal_score": 2, "split": "train"},
+        ],
+    )
+    ds = AestheticDataset(m, "train")
+    assert ds.embeddings.shape == (2, 4)
+    assert ds.embeddings.dtype == torch.float32
+    assert ds.scores.dtype == torch.long
+    assert ds.scores.tolist() == [4, 2]
+    # __getitem__ indexes the stacked tensors and stays consistent with them
+    sample = ds[1]
+    assert torch.equal(sample["embedding"], ds.embeddings[1])
+    assert sample["score"] == 2
+    assert isinstance(sample["score"], int)

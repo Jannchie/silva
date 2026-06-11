@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -31,11 +32,13 @@ class AestheticDataset(Dataset):
         paths = [manifest_path] if isinstance(manifest_path, str) else list(manifest_path)
         df = merge_manifests([pd.read_parquet(p) for p in paths])
         self.rows = df[df["split"] == split].reset_index(drop=True)
+        # Stack the whole split into resident tensors once: np.stack on a (frozen) parquet
+        # column gives a read-only/non-contiguous view, so .copy() before from_numpy.
+        self.embeddings = torch.from_numpy(np.stack(self.rows["embedding"].to_numpy()).copy()).float()
+        self.scores = torch.as_tensor(self.rows["personal_score"].to_numpy().copy(), dtype=torch.long)
 
     def __len__(self) -> int:
-        return len(self.rows)
+        return len(self.scores)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor | int]:
-        row = self.rows.iloc[idx]
-        embedding = torch.tensor(row["embedding"], dtype=torch.float32)
-        return {"embedding": embedding, "score": int(row["personal_score"])}
+        return {"embedding": self.embeddings[idx], "score": int(self.scores[idx])}

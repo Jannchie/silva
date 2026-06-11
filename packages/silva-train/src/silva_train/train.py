@@ -8,7 +8,6 @@ import math
 from contextlib import nullcontext
 from pathlib import Path
 
-import numpy as np
 import torch
 from accelerate import Accelerator
 from accelerate.utils import set_seed
@@ -119,8 +118,7 @@ def train(config_path: str) -> dict[str, float]:
 
     pos_weight = None
     if cfg.train.use_pos_weight:
-        train_scores = torch.tensor(train_ds.rows["personal_score"].to_numpy())
-        pos_weight = compute_pos_weight(train_scores).to(accelerator.device)
+        pos_weight = compute_pos_weight(train_ds.scores).to(accelerator.device)
         accelerator.print(f"pos_weight (per threshold >1..>4): {pos_weight.tolist()}")
 
     # Non-uniform category anchors for QWK: "auto" re-estimates the rater's perceptual
@@ -128,8 +126,8 @@ def train(config_path: str) -> dict[str, float]:
     # the labels as relabel rounds move them.
     anchors = None
     if cfg.train.score_anchors == "auto":
-        emb_t = torch.tensor(np.stack(train_ds.rows["embedding"].to_numpy()), dtype=torch.float32, device=accelerator.device)
-        sc_t = torch.tensor(train_ds.rows["personal_score"].to_numpy(), dtype=torch.float32, device=accelerator.device)
+        emb_t = train_ds.embeddings.to(accelerator.device)
+        sc_t = train_ds.scores.float().to(accelerator.device)
         anchors = torch.tensor(anchors_from_neighbours(emb_t, sc_t))
         del emb_t, sc_t
         accelerator.print(f"score_anchors (auto, kNN pseudo-retest): {[round(float(a), 3) for a in anchors]}")
