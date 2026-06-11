@@ -21,8 +21,9 @@ from silva_train.anchors import anchors_from_neighbours
 from silva_train.checkpoint import save_checkpoint
 from silva_train.config import Config
 from silva_train.data.dataset import AestheticDataset
+from silva_train.data.pairs import PairDataset
 from silva_train.ema import EmaShadow
-from silva_train.losses import compute_pos_weight, silva_loss
+from silva_train.losses import compute_pos_weight, margin_pairwise_loss, silva_loss
 from silva_train.metrics import bootstrap_ci, compute_metrics, is_improvement
 from silva_train.tracking import build_log_with
 
@@ -134,6 +135,18 @@ def train(config_path: str) -> dict[str, float]:
     elif cfg.train.score_anchors is not None:
         anchors = torch.tensor([float(a) for a in cfg.train.score_anchors])
 
+    # Explicit-preference pairs (optional): the margin-ranking term over your pictoria
+    # comparisons. Default off — when disabled the inner loop is byte-identical to before.
+    pair_ds = None
+    pair_gen = None
+    if cfg.train.pairwise_weight > 0 and cfg.data.pair_manifest_path:
+        pair_ds = PairDataset(cfg.data.pair_manifest_path)
+        pair_ds.emb_a = pair_ds.emb_a.to(accelerator.device)
+        pair_ds.emb_b = pair_ds.emb_b.to(accelerator.device)
+        pair_ds.targets = pair_ds.targets.to(accelerator.device)
+        pair_gen = torch.Generator().manual_seed(cfg.train.seed)
+        accelerator.print(f"pairwise margin term: {len(pair_ds)} pairs, weight={cfg.train.pairwise_weight}")
+
     model, optimizer, train_loader, val_loader, train_eval_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, train_eval_loader, scheduler
     )
@@ -181,6 +194,12 @@ def train(config_path: str) -> dict[str, float]:
                     loss_truncation=cfg.train.loss_truncation,
                     anchors=anchors,
                 )
+                if pair_ds is not None:
+                    pa, pb, pt = pair_ds.sample(cfg.train.pair_batch, pair_gen)
+                    loss = loss + cfg.train.pairwise_weight * margin_pairwise_loss(
+                        model(pa)["logits"], model(pb)["logits"], pt,
+                        margin=cfg.train.pair_margin, tie_margin=cfg.train.tie_margin,
+                    )
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), cfg.train.max_grad_norm)

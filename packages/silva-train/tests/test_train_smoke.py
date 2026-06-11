@@ -177,6 +177,65 @@ def test_training_closed_loop_reports_to_pandm(tmp_path, monkeypatch):
     assert ("silva-smoke", "e2e", "finished") in runs  # run named via build_log_with + finished cleanly
 
 
+def test_training_closed_loop_with_pairwise(tmp_path):
+    # exercises the pairwise margin path: a pair manifest + pairwise_weight > 0 runs end-to-end
+    from silva_train.train import train
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for i in range(24):
+        score = (i % 5) + 1
+        emb = rng.standard_normal(16)
+        emb[0] += score * 3.0
+        rows.append({"post_id": i, "embedding": emb.tolist(), "personal_score": score, "split": "train" if i < 18 else "val"})
+    manifest = tmp_path / "manifest.parquet"
+    write_manifest(pd.DataFrame(rows), manifest)
+
+    # a few explicit preference pairs (higher-score side wins; one tie)
+    pair_rows = [
+        {"embedding_a": rng.standard_normal(16).tolist(), "embedding_b": rng.standard_normal(16).tolist(), "target": t}
+        for t in (1, -1, 1, 0, -1)
+    ]
+    pairs = tmp_path / "pairs.parquet"
+    pd.DataFrame(pair_rows).to_parquet(pairs, index=False)
+
+    out_dir = tmp_path / "out"
+    cfg = {
+        "model": {"embedding_dim": 16, "dropout": 0.0},
+        "data": {"manifest_path": str(manifest), "num_workers": 0, "pair_manifest_path": str(pairs)},
+        "train": {
+            "batch_size": 4,
+            "epochs": 1,
+            "lr_head": 1e-2,
+            "warmup_ratio": 0.0,
+            "use_pos_weight": True,
+            "mixed_precision": "no",
+            "eval_every": 1,
+            "early_stop_patience": 3,
+            "seed": 0,
+            "pairwise_weight": 1.0,
+            "pair_margin": 0.5,
+            "pair_batch": 4,
+            "report_to": "none",
+            "output_dir": str(out_dir),
+        },
+    }
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    # the config must OWN the new keys (pydantic must not silently drop them)
+    from silva_train.config import Config
+
+    parsed = Config.from_yaml(cfg_path)
+    assert parsed.train.pairwise_weight == 1.0
+    assert parsed.data.pair_manifest_path == str(pairs)
+
+    metrics = train(str(cfg_path))
+
+    assert (out_dir / "best.safetensors").exists()
+    assert "spearman" in metrics
+
+
 def test_training_closed_loop_with_ema(tmp_path):
     # exercises the EMA path: update each step, swap shadow weights in for eval + save
     from silva_train.train import train

@@ -21,6 +21,7 @@ class DataConfig(BaseModel):
     # 0: the dataset is fully resident in memory tensors, so worker processes only add
     # cost — on Windows (spawn) each would pickle the whole dataset.
     num_workers: int = 0
+    pair_manifest_path: str | None = None  # parquet of explicit preference pairs (embedding_a/embedding_b/target); enables the pairwise margin term
 
 
 class TrainConfig(BaseModel):
@@ -35,6 +36,10 @@ class TrainConfig(BaseModel):
     ranking_weight: float = 0.0  # weight on pairwise ranking loss (directly optimises Spearman)
     soft_spearman_weight: float = 0.0  # weight on global soft-Spearman loss (ranking + calibration)
     qwk_weight: float = 0.0  # weight on quadratic-weighted-kappa loss (crushes large-gap blunders, improves MAE)
+    pairwise_weight: float = 0.0  # weight on the explicit-preference margin loss (data.pair_manifest_path); 0 = disabled
+    pair_margin: float = 0.5  # decisive pairs: winner's ordinal_score must lead by >= this margin
+    tie_margin: float = 0.0  # tie pairs: |score_a - score_b| above this is penalised
+    pair_batch: int = 256  # pairs sampled per micro-batch for the margin term
     score_anchors: list[float] | Literal["auto"] | None = None  # non-uniform QWK category positions; "auto" = kNN pseudo-retest estimate
     label_smoothing: float = 0.0  # soften ordinal targets {0,1}->{eps,1-eps}; keeps latent finite, kills the 0~1 tail saturation
     mixup_alpha: float = 0.0  # Beta(alpha,alpha) embedding mixup; 0 = disabled
